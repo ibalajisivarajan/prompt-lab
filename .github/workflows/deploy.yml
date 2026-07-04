@@ -25,7 +25,29 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Inject Groq key from repo secret
-        run: echo "window.GROQ_KEY = \"${{ secrets.GROQ_API_KEY }}\";" > config.js
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          if [ -z "$GROQ_API_KEY" ]; then
+            echo "GROQ_API_KEY repo secret is empty or unavailable" >&2
+            exit 1
+          fi
+
+          key_length=${#GROQ_API_KEY}
+          if [ "$key_length" -le 20 ]; then
+            echo "GROQ_API_KEY repo secret is unexpectedly short (length=$key_length)" >&2
+            exit 1
+          fi
+
+          printf 'window.GROQ_KEY = "%s";\n' "$GROQ_API_KEY" > config.js
+          echo "Wrote config.js with window.GROQ_KEY (redacted, length=$key_length)"
+
+      - name: Verify site files before upload
+        run: |
+          test -s config.js
+          grep -q '^window.GROQ_KEY = "' config.js
+          echo "Files to upload:"
+          find . -maxdepth 2 -type f -not -path './.git/*' | sort
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
