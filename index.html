@@ -31,12 +31,6 @@
   h1 .spark{color:var(--orange);-webkit-text-stroke:1.5px var(--ink)}
   .sub{font-size:13.5px;font-weight:500;margin:0 0 16px}
 
-  /* key bar */
-  .keybar{display:flex;gap:8px;margin-bottom:16px}
-  .keybar input{
-    flex:1;border:3px solid var(--ink);border-radius:12px;padding:11px 12px;
-    font-family:'Space Mono',monospace;font-size:12px;background:var(--paper);outline:none;
-  }
   .btn{
     border:3px solid var(--ink);border-radius:12px;padding:12px 14px;
     font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;
@@ -128,14 +122,6 @@
     line-height:1.7;text-align:center}
   .err{color:#B3261E;font-weight:700;font-size:13px;margin-top:10px}
 
-  /* key modal */
-  .modal-bg{position:fixed;inset:0;background:rgba(20,20,20,.55);display:flex;align-items:center;
-    justify-content:center;padding:20px;z-index:50}
-  .modal{background:var(--paper);border:3px solid var(--ink);border-radius:20px;box-shadow:var(--shadow);
-    padding:20px;max-width:420px;width:100%}
-  .modal h2{font-family:'Archivo Black',sans-serif;font-size:20px;margin:0 0 8px;text-transform:uppercase}
-  .modal p{font-size:13.5px;line-height:1.55;margin:0 0 12px}
-  .modal a{color:var(--ink);font-weight:700}
   .hidden{display:none}
 </style>
 </head>
@@ -144,12 +130,6 @@
   <div class="eyebrow">BUSINESS IDEA LOOP · TRAINING SANDBOX</div>
   <h1>Prompt<br>Lab<span class="spark"> ✳</span></h1>
   <p class="sub">Prompt → Context → Harness → Loop. Every button is a real Groq call.</p>
-
-  <div class="keybar">
-    <input id="keyDisplay" type="text" placeholder="Groq API key" readonly onclick="changeKey()" />
-    <button class="btn" onclick="changeKey()">Key</button>
-  </div>
-
   <div class="tabs" id="tabs"></div>
   <div class="card" id="stageCard"></div>
 
@@ -194,36 +174,15 @@ let S = {
 };
 
 /* ================= KEY =================
-   Resolution order:
-   1. window.GROQ_KEY from config.js committed in the repo (feed once, use everywhere)
-   2. localStorage on this device
-   3. Native prompt() fallback                               */
-let memKey = '';
-function configKey(){
-  return (typeof window.GROQ_KEY === 'string' && window.GROQ_KEY.indexOf('gsk_') === 0) ? window.GROQ_KEY : '';
-}
+   The API key is injected by the Pages workflow into config.js as window.GROQ_KEY. */
 function getKey(){
-  const ck = configKey(); if(ck) return ck;
-  try{ const k = localStorage.getItem('promptlab_groq_key'); if(k) return k; }catch(e){}
-  return memKey;
-}
-function setStoredKey(k){ memKey = k; try{ localStorage.setItem('promptlab_groq_key', k); }catch(e){} }
-function changeKey(){
-  if(configKey()){ alert('Key is loaded from config.js in the repo. Edit that file to change it.'); return; }
-  const k = window.prompt('Paste your Groq API key (gsk_...). Stored on this device only:', '');
-  if(k && k.trim()) setStoredKey(k.trim());
-  refreshKeyDisplay();
-}
-function refreshKeyDisplay(){
-  const el = document.getElementById('keyDisplay');
-  const k = getKey();
-  el.value = k ? ('••••••••' + k.slice(-4) + (configKey() ? '  (config.js)' : '  (this device)')) : 'no key — tap Key';
+  return (typeof window.GROQ_KEY === 'string' && window.GROQ_KEY.indexOf('gsk_') === 0) ? window.GROQ_KEY : '';
 }
 
 /* ================= GROQ ================= */
 async function callGroq(userContent, system){
   const key = getKey();
-  if(!key){ changeKey(); throw new Error('NO_KEY'); }
+  if(!key){ throw new Error('CONFIG_KEY_MISSING'); }
   const messages = [];
   if(system) messages.push({role:'system', content:system});
   messages.push({role:'user', content:userContent});
@@ -292,7 +251,7 @@ function setPreset(k){ S.s1.preset=k; S.s1.prompt=PROMPTS[k]; render(); }
 async function runS1(){
   S.busy=true; S.s1.out=''; S.s1.err=''; render();
   try{ S.s1.out = await callGroq(S.s1.prompt); complete(1); }
-  catch(e){ S.s1.err = e.message==='NO_KEY'?'Add your Groq key first.':'Call failed ('+e.message+'). Run again — Stage 1 has no retry. That is the point.'; }
+  catch(e){ S.s1.err = e.message==='CONFIG_KEY_MISSING'?'API key is unavailable. Check the repo secret and generated config.js.':'Call failed ('+e.message+'). Run again — Stage 1 has no retry. That is the point.'; }
   S.busy=false; render();
 }
 
@@ -320,7 +279,7 @@ async function runS2(){
   try{
     const full = S.s2.ctxOn ? S.s2.context+'\n\n---\n\n'+S2_PROMPT : S2_PROMPT;
     S.s2.out = await callGroq(full); complete(2);
-  }catch(e){ S.s2.out = e.message==='NO_KEY'?'Add your Groq key first.':'Call failed — try again. ('+e.message+')'; }
+  }catch(e){ S.s2.out = e.message==='CONFIG_KEY_MISSING'?'API key is unavailable. Check the repo secret and generated config.js.':'Call failed — try again. ('+e.message+')'; }
   S.busy=false; render();
 }
 
@@ -363,7 +322,7 @@ async function runS3(){
         render();
       }
     }catch(e){
-      if(e.message==='NO_KEY'){ S.busy=false; render(); return; }
+      if(e.message==='CONFIG_KEY_MISSING'){ S.s3.log.push({attempt:a,status:'FAIL',detail:'config.js key missing'}); S.busy=false; render(); return; }
       S.s3.log.push({attempt:a,status:'FAIL',detail:'network/API error · '+(a<MAX?'auto-retrying':'brake tripped')});
       render();
     }
@@ -411,7 +370,7 @@ async function runS4(){
       }
       current=obj.revisedIdea;
     }catch(e){
-      if(e.message==='NO_KEY'){ S.busy=false; render(); return; }
+      if(e.message==='CONFIG_KEY_MISSING'){ S.s4.stop='CONFIG ERROR — config.js did not provide the repo API key'; S.busy=false; render(); return; }
       S.s4.iters.push({n:i,score:null,critique:'iteration failed (parse/network) — loop continues',revisedIdea:current});
       render();
     }
@@ -421,7 +380,6 @@ async function runS4(){
 }
 
 /* ================= INIT ================= */
-refreshKeyDisplay();
 render();
 </script>
 </body>
