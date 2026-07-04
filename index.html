@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Prompt Lab — Prompt · Context · Harness · Loop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --field:#B49CF6;        /* lavender field */
+    --ink:#141414;          /* border black */
+    --paper:#FFF9F0;        /* card cream */
+    --orange:#FFB147;       /* stage 1 prompt */
+    --lime:#C7F464;         /* stage 2 context */
+    --pink:#FF9ADF;         /* stage 3 harness */
+    --sky:#7DD3FC;          /* stage 4 loop */
+    --red:#FF6B5E;
+    --shadow:5px 5px 0 var(--ink);
+    --shadow-sm:3px 3px 0 var(--ink);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{
+    margin:0;background:var(--field);color:var(--ink);
+    font-family:'Space Grotesk',-apple-system,sans-serif;
+    padding:18px 14px 60px;min-height:100vh;
+  }
+  .wrap{max-width:560px;margin:0 auto}
+  .eyebrow{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:2px;font-weight:700;margin-bottom:2px}
+  h1{font-family:'Archivo Black',sans-serif;font-size:34px;margin:0 0 4px;line-height:1.05;text-transform:uppercase}
+  h1 .spark{color:var(--orange);-webkit-text-stroke:1.5px var(--ink)}
+  .sub{font-size:13.5px;font-weight:500;margin:0 0 16px}
+
+  /* key bar */
+  .keybar{display:flex;gap:8px;margin-bottom:16px}
+  .keybar input{
+    flex:1;border:3px solid var(--ink);border-radius:12px;padding:11px 12px;
+    font-family:'Space Mono',monospace;font-size:12px;background:var(--paper);outline:none;
+  }
+  .btn{
+    border:3px solid var(--ink);border-radius:12px;padding:12px 14px;
+    font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;
+    background:var(--paper);box-shadow:var(--shadow-sm);cursor:pointer;
+    transition:transform .05s, box-shadow .05s;color:var(--ink);
+  }
+  .btn:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--ink)}
+  .btn:disabled{opacity:.5;pointer-events:none}
+  .btn.full{width:100%;padding:14px;font-size:15px;box-shadow:var(--shadow)}
+  .btn.full:active{transform:translate(5px,5px);box-shadow:0 0 0 var(--ink)}
+
+  /* stage tabs */
+  .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
+  .tab{
+    border:3px solid var(--ink);border-radius:14px;padding:10px 2px;
+    font-family:'Space Mono',monospace;font-weight:700;font-size:11px;text-align:center;
+    background:var(--paper);cursor:pointer;box-shadow:var(--shadow-sm);
+  }
+  .tab .n{display:block;font-family:'Archivo Black',sans-serif;font-size:17px}
+  .tab.active{transform:translate(3px,3px);box-shadow:0 0 0 var(--ink)}
+  .tab.locked{opacity:.45;background:#d9d0f5;box-shadow:none;cursor:default}
+
+  /* main card */
+  .card{
+    border:3px solid var(--ink);border-radius:20px;background:var(--paper);
+    box-shadow:var(--shadow);padding:18px 16px;
+  }
+  .stage-title{font-family:'Archivo Black',sans-serif;font-size:20px;text-transform:uppercase;margin:0 0 12px;
+    display:inline-block;padding:4px 10px;border:3px solid var(--ink);border-radius:10px;box-shadow:var(--shadow-sm)}
+
+  .teach{
+    border:3px solid var(--ink);border-radius:14px;padding:12px 13px;
+    font-size:13.5px;line-height:1.5;margin-bottom:14px;box-shadow:var(--shadow-sm);
+  }
+  .teach .tag{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1.5px;
+    text-transform:uppercase;display:block;margin-bottom:5px}
+
+  textarea{
+    width:100%;border:3px solid var(--ink);border-radius:14px;padding:12px;
+    font-family:'Space Mono',monospace;font-size:12.5px;line-height:1.5;background:#fff;
+    resize:vertical;outline:none;margin-bottom:12px;
+  }
+  .presets{display:flex;gap:8px;margin-bottom:10px}
+  .preset{
+    flex:1;border:3px solid var(--ink);border-radius:10px;padding:9px 4px;
+    font-weight:700;font-size:12px;background:#fff;cursor:pointer;
+  }
+  .preset.on{background:var(--orange);box-shadow:var(--shadow-sm)}
+
+  .out{
+    border:3px solid var(--ink);border-radius:14px;background:#fff;
+    padding:12px;margin-top:12px;box-shadow:var(--shadow-sm);
+  }
+  .out .lbl{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px}
+  .out .body{font-size:13px;line-height:1.55;white-space:pre-wrap;max-height:330px;overflow-y:auto}
+
+  .take{font-size:12.5px;line-height:1.5;margin-top:12px;padding:10px 12px;
+    border:3px dashed var(--ink);border-radius:12px;background:#fff}
+
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;
+    border:3px solid var(--ink);border-radius:14px;padding:10px 13px;margin-bottom:10px;
+    background:var(--lime);box-shadow:var(--shadow-sm);font-weight:700;font-size:14px}
+  .switch{width:52px;height:28px;border:3px solid var(--ink);border-radius:16px;background:#fff;position:relative;cursor:pointer}
+  .switch .knob{width:18px;height:18px;border-radius:50%;background:var(--ink);position:absolute;top:2px;left:3px;transition:left .12s}
+  .switch.on{background:var(--lime)}
+  .switch.on .knob{left:25px}
+
+  .log{border:3px solid var(--ink);border-radius:14px;background:var(--ink);color:#fff;
+    padding:12px;margin-top:12px;font-family:'Space Mono',monospace;font-size:12px}
+  .log .row{display:flex;gap:8px;margin-bottom:4px}
+  .pass{color:var(--lime);font-weight:700}.fail{color:var(--red);font-weight:700}
+  .log .lbl{font-size:10px;letter-spacing:1.5px;color:var(--pink);margin-bottom:8px;font-weight:700}
+
+  .score-big{font-family:'Archivo Black',sans-serif;font-size:42px;line-height:1}
+  .score-big small{font-family:'Space Mono',monospace;font-size:14px}
+
+  .iter{border:3px solid var(--ink);border-radius:14px;padding:12px;margin-top:12px;box-shadow:var(--shadow-sm);background:#fff}
+  .iter .head{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;margin-bottom:6px}
+  .iter .chip{border:2px solid var(--ink);border-radius:8px;padding:1px 8px}
+  .stopbox{margin-top:12px;border:3px solid var(--ink);border-radius:14px;padding:12px;
+    font-family:'Space Mono',monospace;font-weight:700;font-size:13px;box-shadow:var(--shadow-sm)}
+
+  .spin{display:inline-block;width:14px;height:14px;border:3px solid var(--ink);border-top-color:transparent;
+    border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:8px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .busy{margin-top:12px;font-family:'Space Mono',monospace;font-size:12.5px;font-weight:700}
+
+  .mantra{margin-top:18px;font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;
+    line-height:1.7;text-align:center}
+  .err{color:#B3261E;font-weight:700;font-size:13px;margin-top:10px}
+
+  /* key modal */
+  .modal-bg{position:fixed;inset:0;background:rgba(20,20,20,.55);display:flex;align-items:center;
+    justify-content:center;padding:20px;z-index:50}
+  .modal{background:var(--paper);border:3px solid var(--ink);border-radius:20px;box-shadow:var(--shadow);
+    padding:20px;max-width:420px;width:100%}
+  .modal h2{font-family:'Archivo Black',sans-serif;font-size:20px;margin:0 0 8px;text-transform:uppercase}
+  .modal p{font-size:13.5px;line-height:1.55;margin:0 0 12px}
+  .modal a{color:var(--ink);font-weight:700}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">BUSINESS IDEA LOOP · TRAINING SANDBOX</div>
+  <h1>Prompt<br>Lab<span class="spark"> ✳</span></h1>
+  <p class="sub">Prompt → Context → Harness → Loop. Every button is a real Groq call.</p>
+
+  <div class="keybar">
+    <input id="keyDisplay" type="text" placeholder="Groq API key" readonly onclick="changeKey()" />
+    <button class="btn" onclick="changeKey()">Key</button>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+  <div class="card" id="stageCard"></div>
+
+  <div class="mantra">
+    prompt = the sentence · context = the ingredients<br>
+    harness = the kitchen · loop = the restaurant
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+/* ================= STATE ================= */
+const LAYERS = {
+  1:{name:'Prompt', color:'var(--orange)'},
+  2:{name:'Context',color:'var(--lime)'},
+  3:{name:'Harness',color:'var(--pink)'},
+  4:{name:'Loop',   color:'var(--sky)'},
+};
+const MODEL = 'llama-3.3-70b-versatile';
+const IDEA = 'FocusMirror AI — a $19/mo web app that records your work session via webcam presence detection (no video stored), tracks real focus blocks vs. drift, and emails a nightly focus report with one behavioral fix.';
+const RUBRIC = `SCORING RUBRIC (Winners DB, 90 pts max):
+- AI-Operability (0-20): every function runs via AI agents, zero humans at any scale
+- Revenue Path (0-20): credible route to $1M cumulative in months 1-12
+- Margin (0-15): 70%+ gross margin after AI/platform/delivery/acquisition costs, shown as breakdown
+- Startup Cost (0-10): under $500 total
+- Primal Need (0-15): rooted in sleep, food, mental peace, connection, or entertainment
+- Moat/Distribution (0-10): defensible channel or advantage
+Gate: 38+ to advance. 70+ = FINAL WINNER quality.`;
+const PROMPTS = {
+  vague: 'Evaluate this business idea: ' + IDEA,
+  structured: 'You are a venture analyst. Evaluate this business idea in exactly 3 sections: (1) Strengths, (2) Fatal risks, (3) Verdict in one sentence. Be blunt and specific.\n\nIdea: ' + IDEA,
+  examples: 'You are a venture analyst. Evaluate the idea below.\n\nExample of the verdict style I want: "REJECT — CAC exceeds LTV in every realistic channel; the margin math dies at scale."\n\nGive: (1) Strengths, (2) Fatal risks, (3) A verdict in that exact blunt style.\n\nIdea: ' + IDEA,
+};
+
+let S = {
+  stage:1, unlocked:1, busy:false,
+  s1:{preset:'vague', prompt:PROMPTS.vague, out:'', err:''},
+  s2:{ctxOn:true, context:RUBRIC, out:''},
+  s3:{log:[], parsed:null},
+  s4:{idea:'A $9/mo newsletter that curates trending TikTok sounds for small-business owners.',
+      iters:[], stop:'', stopFlag:false},
+};
+
+/* ================= KEY =================
+   Resolution order:
+   1. window.GROQ_KEY from config.js committed in the repo (feed once, use everywhere)
+   2. localStorage on this device
+   3. Native prompt() fallback                               */
+let memKey = '';
+function configKey(){
+  return (typeof window.GROQ_KEY === 'string' && window.GROQ_KEY.indexOf('gsk_') === 0) ? window.GROQ_KEY : '';
+}
+function getKey(){
+  const ck = configKey(); if(ck) return ck;
+  try{ const k = localStorage.getItem('promptlab_groq_key'); if(k) return k; }catch(e){}
+  return memKey;
+}
+function setStoredKey(k){ memKey = k; try{ localStorage.setItem('promptlab_groq_key', k); }catch(e){} }
+function changeKey(){
+  if(configKey()){ alert('Key is loaded from config.js in the repo. Edit that file to change it.'); return; }
+  const k = window.prompt('Paste your Groq API key (gsk_...). Stored on this device only:', '');
+  if(k && k.trim()) setStoredKey(k.trim());
+  refreshKeyDisplay();
+}
+function refreshKeyDisplay(){
+  const el = document.getElementById('keyDisplay');
+  const k = getKey();
+  el.value = k ? ('••••••••' + k.slice(-4) + (configKey() ? '  (config.js)' : '  (this device)')) : 'no key — tap Key';
+}
+
+/* ================= GROQ ================= */
+async function callGroq(userContent, system){
+  const key = getKey();
+  if(!key){ changeKey(); throw new Error('NO_KEY'); }
+  const messages = [];
+  if(system) messages.push({role:'system', content:system});
+  messages.push({role:'user', content:userContent});
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+    body: JSON.stringify({model:MODEL, messages, max_tokens:1000, temperature:0.7})
+  });
+  if(!res.ok){
+    const t = await res.text();
+    throw new Error('HTTP '+res.status+': '+t.slice(0,140));
+  }
+  const data = await res.json();
+  return (data.choices && data.choices[0] && data.choices[0].message.content) || '';
+}
+function stripFences(t){ return t.replace(/```json|```/g,'').trim(); }
+function esc(t){ const d=document.createElement('div'); d.textContent=t; return d.innerHTML; }
+
+/* ================= RENDER ================= */
+function render(){
+  renderTabs();
+  const el = document.getElementById('stageCard');
+  if(S.stage===1) el.innerHTML = viewS1();
+  if(S.stage===2) el.innerHTML = viewS2();
+  if(S.stage===3) el.innerHTML = viewS3();
+  if(S.stage===4) el.innerHTML = viewS4();
+}
+function renderTabs(){
+  const t = document.getElementById('tabs');
+  t.innerHTML = [1,2,3,4].map(i=>{
+    const L=LAYERS[i], un=i<=S.unlocked, act=i===S.stage;
+    return `<div class="tab ${act?'active':''} ${un?'':'locked'}"
+      style="${act?'background:'+L.color:''}"
+      onclick="${un?`go(${i})`:''}">
+      <span class="n">${un?i:'🔒'}</span>${L.name}</div>`;
+  }).join('');
+}
+function go(i){ if(!S.busy){ S.stage=i; render(); } }
+function complete(i){ if(i>=S.unlocked) S.unlocked=Math.min(i+1,4); }
+
+function teach(stage, html){
+  return `<div class="teach" style="background:${LAYERS[stage].color}">
+    <span class="tag">What this layer adds</span>${html}</div>`;
+}
+function busyRow(txt){ return S.busy?`<div class="busy"><span class="spin"></span>${txt}</div>`:''; }
+
+/* ================= STAGE 1 ================= */
+function viewS1(){
+  const p=S.s1;
+  return `
+  <div class="stage-title" style="background:${LAYERS[1].color}">Stage 1 — Prompt</div>
+  ${teach(1,'One assembled input → one raw output. No grounding data, no validation, no retry. Try all three presets on the <b>same idea</b> and compare. Then notice what wording alone cannot fix.')}
+  <div class="presets">
+    ${[['Vague','vague'],['Structured','structured'],['W/ example','examples']].map(([l,k])=>
+      `<button class="preset ${p.preset===k?'on':''}" onclick="setPreset('${k}')">${l}</button>`).join('')}
+  </div>
+  <textarea id="s1prompt" rows="6" oninput="S.s1.prompt=this.value">${esc(p.prompt)}</textarea>
+  <button class="btn full" style="background:${LAYERS[1].color}" ${S.busy?'disabled':''} onclick="runS1()">
+    ${S.busy?'Calling model…':'Send prompt'}</button>
+  ${busyRow('one input → one output')}
+  ${p.err?`<div class="err">${esc(p.err)}</div>`:''}
+  ${p.out?`<div class="out"><div class="lbl">Raw response</div><div class="body">${esc(p.out)}</div></div>
+  <div class="take"><b>Takeaway:</b> better wording → better output, but the model still guesses your criteria. It doesn't know your rubric exists. That's a <b>context</b> problem — Stage 2 unlocked.</div>`:''}`;
+}
+function setPreset(k){ S.s1.preset=k; S.s1.prompt=PROMPTS[k]; render(); }
+async function runS1(){
+  S.busy=true; S.s1.out=''; S.s1.err=''; render();
+  try{ S.s1.out = await callGroq(S.s1.prompt); complete(1); }
+  catch(e){ S.s1.err = e.message==='NO_KEY'?'Add your Groq key first.':'Call failed ('+e.message+'). Run again — Stage 1 has no retry. That is the point.'; }
+  S.busy=false; render();
+}
+
+/* ================= STAGE 2 ================= */
+const S2_PROMPT = 'You are the Task 3 evaluator. Score this business idea against the rubric and give a total with per-criterion breakdown, then a one-line verdict.\n\nIdea: ' + IDEA;
+function viewS2(){
+  const p=S.s2;
+  return `
+  <div class="stage-title" style="background:${LAYERS[2].color}">Stage 2 — Context</div>
+  ${teach(2,'Same prompt, but the app now <b>prepends your real scoring rubric</b> before the model sees the task. The code change is string concatenation. The output change: the model stops guessing your criteria. Toggle it off and re-run to feel it.')}
+  <div class="toggle-row">Inject Winners DB rubric
+    <div class="switch ${p.ctxOn?'on':''}" onclick="S.s2.ctxOn=!S.s2.ctxOn;render()"><div class="knob"></div></div>
+  </div>
+  ${p.ctxOn?`<textarea rows="7" oninput="S.s2.context=this.value">${esc(p.context)}</textarea>`:''}
+  <div class="out" style="margin:0 0 12px;box-shadow:none"><div class="lbl">Fixed prompt</div>
+    <div class="body" style="font-family:'Space Mono',monospace;font-size:12px">${esc(S2_PROMPT)}</div></div>
+  <button class="btn full" style="background:${LAYERS[2].color}" ${S.busy?'disabled':''} onclick="runS2()">
+    ${S.busy?'Calling model…':(p.ctxOn?'Run WITH context':'Run WITHOUT context')}</button>
+  ${busyRow('context + prompt → model')}
+  ${p.out?`<div class="out"><div class="lbl">${p.ctxOn?'Grounded':'Ungrounded'} response</div><div class="body">${esc(p.out)}</div></div>
+  <div class="take"><b>Takeaway:</b> context beats cleverness. But output is still free text — nothing guarantees it parses, nothing catches failure. That's a <b>harness</b> problem — Stage 3 unlocked.</div>`:''}`;
+}
+async function runS2(){
+  S.busy=true; S.s2.out=''; render();
+  try{
+    const full = S.s2.ctxOn ? S.s2.context+'\n\n---\n\n'+S2_PROMPT : S2_PROMPT;
+    S.s2.out = await callGroq(full); complete(2);
+  }catch(e){ S.s2.out = e.message==='NO_KEY'?'Add your Groq key first.':'Call failed — try again. ('+e.message+')'; }
+  S.busy=false; render();
+}
+
+/* ================= STAGE 3 ================= */
+const JSON_SYS = 'Respond ONLY with valid JSON, no markdown fences, no preamble. Schema: {"score": number (0-90), "strongest": string, "weakest": string, "verdict": string}';
+function viewS3(){
+  const p=S.s3;
+  return `
+  <div class="stage-title" style="background:${LAYERS[3].color}">Stage 3 — Harness</div>
+  ${teach(3,'The app now <b>demands JSON, validates with JSON.parse(), and auto-retries once on failure</b> — logging every attempt with latency. You stop reading outputs and start reading a run log. The system catches failure, not you.')}
+  <button class="btn full" style="background:${LAYERS[3].color}" ${S.busy?'disabled':''} onclick="runS3()">
+    ${S.busy?'Harness running…':'Run harnessed call'}</button>
+  ${busyRow('call → validate → retry if needed')}
+  ${p.log.length?`<div class="log"><div class="lbl">RUN LOG</div>
+    ${p.log.map(e=>`<div class="row"><span>#${e.attempt}</span>
+      <span class="${e.status==='PASS'?'pass':'fail'}">${e.status}</span>
+      <span>${esc(e.detail)}</span></div>`).join('')}</div>`:''}
+  ${p.parsed?`<div class="out" style="background:${LAYERS[3].color}">
+    <div class="score-big">${p.parsed.score}<small> / 90</small></div>
+    <div style="font-size:13px;line-height:1.55;margin-top:8px">
+      <div><b>Strongest:</b> ${esc(String(p.parsed.strongest))}</div>
+      <div><b>Weakest:</b> ${esc(String(p.parsed.weakest))}</div>
+      <div style="margin-top:4px">${esc(String(p.parsed.verdict))}</div></div></div>
+  <div class="take"><b>Takeaway:</b> structured output + validation + retry = a call you can build on. But it's still <b>one</b> call. Improving an idea until it clears a bar is a <b>loop</b> problem — Stage 4 unlocked.</div>`:''}`;
+}
+async function runS3(){
+  S.busy=true; S.s3={log:[],parsed:null}; render();
+  const MAX=2;
+  for(let a=1;a<=MAX;a++){
+    const t0=Date.now();
+    try{
+      const raw = await callGroq(RUBRIC+'\n\nScore this idea against the rubric.\n\nIdea: '+IDEA, JSON_SYS);
+      const ms=Date.now()-t0;
+      try{
+        const obj = JSON.parse(stripFences(raw));
+        S.s3.log.push({attempt:a,status:'PASS',detail:'valid JSON · '+ms+'ms'});
+        S.s3.parsed=obj; complete(3); S.busy=false; render(); return;
+      }catch(_){
+        S.s3.log.push({attempt:a,status:'FAIL',detail:'malformed JSON · '+ms+'ms · '+(a<MAX?'auto-retrying':'brake tripped')});
+        render();
+      }
+    }catch(e){
+      if(e.message==='NO_KEY'){ S.busy=false; render(); return; }
+      S.s3.log.push({attempt:a,status:'FAIL',detail:'network/API error · '+(a<MAX?'auto-retrying':'brake tripped')});
+      render();
+    }
+  }
+  S.busy=false; render();
+}
+
+/* ================= STAGE 4 ================= */
+const GOAL=70, MAX_ITERS=4;
+const LOOP_SYS = 'Respond ONLY with valid JSON, no fences, no preamble. Schema: {"score": number (0-90), "critique": string (the single biggest weakness), "revisedIdea": string (a rewritten stronger version that fixes that weakness while keeping startup cost under $500 and zero human employees)}';
+function viewS4(){
+  const p=S.s4;
+  return `
+  <div class="stage-title" style="background:${LAYERS[4].color}">Stage 4 — Loop</div>
+  ${teach(4,`Goal + stop rule: <b>revise until score ≥ ${GOAL}, max ${MAX_ITERS} iterations</b>. Each cycle: score → critique → revise → re-score, feeding results back as new context. The run ends when the job is done or the brake trips — never "when the model stops talking."`)}
+  <textarea rows="3" oninput="S.s4.idea=this.value">${esc(p.idea)}</textarea>
+  <div style="display:flex;gap:8px">
+    <button class="btn full" style="background:${LAYERS[4].color};flex:3" ${S.busy?'disabled':''} onclick="runS4()">
+      ${S.busy?'Loop running…':'Run loop'}</button>
+    <button class="btn" style="background:var(--red);flex:1" ${S.busy?'':'disabled'} onclick="S.s4.stopFlag=true">STOP</button>
+  </div>
+  ${busyRow('iterating toward score ≥ '+GOAL)}
+  ${p.iters.map(it=>`<div class="iter" style="${it.score!==null&&it.score>=GOAL?'background:'+LAYERS[4].color:''}">
+    <div class="head"><span>ITERATION ${it.n}</span>
+      <span class="chip">${it.score===null?'ERR':it.score+'/90'}</span></div>
+    <div style="font-size:13px;line-height:1.5"><b>Weakness:</b> ${esc(String(it.critique))}</div>
+    <div style="font-size:13px;line-height:1.5;margin-top:6px"><b>Revised →</b> ${esc(String(it.revisedIdea))}</div>
+  </div>`).join('')}
+  ${p.stop?`<div class="stopbox" style="background:${p.stop.startsWith('GOAL')?LAYERS[4].color:'var(--orange)'}">${esc(p.stop)}</div>
+  <div class="take"><b>Takeaway:</b> the unit of work is the <b>run</b>, not the reply. Now paste a real WATCH-tier idea from your Pipeline DB and see if the loop upgrades it past the gate.</div>`:''}`;
+}
+async function runS4(){
+  S.busy=true; S.s4.iters=[]; S.s4.stop=''; S.s4.stopFlag=false; render();
+  let current=S.s4.idea;
+  for(let i=1;i<=MAX_ITERS;i++){
+    if(S.s4.stopFlag){ S.s4.stop='STOPPED — manual brake'; break; }
+    try{
+      const raw = await callGroq(RUBRIC+'\n\nScore this idea, name its single biggest weakness, and rewrite it stronger.\n\nIdea: '+current, LOOP_SYS);
+      const obj = JSON.parse(stripFences(raw));
+      S.s4.iters.push({n:i,score:obj.score,critique:obj.critique,revisedIdea:obj.revisedIdea});
+      render();
+      if(obj.score>=GOAL){
+        S.s4.stop='GOAL MET — score '+obj.score+' ≥ '+GOAL+' in '+i+' iteration'+(i>1?'s':'');
+        complete(4); S.busy=false; render(); return;
+      }
+      current=obj.revisedIdea;
+    }catch(e){
+      if(e.message==='NO_KEY'){ S.busy=false; render(); return; }
+      S.s4.iters.push({n:i,score:null,critique:'iteration failed (parse/network) — loop continues',revisedIdea:current});
+      render();
+    }
+  }
+  if(!S.s4.stopFlag && !S.s4.stop) S.s4.stop='BRAKE TRIPPED — max '+MAX_ITERS+' iterations, goal not met';
+  complete(4); S.busy=false; render();
+}
+
+/* ================= INIT ================= */
+refreshKeyDisplay();
+render();
+</script>
+</body>
+</html>
