@@ -4,6 +4,10 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Prompt Lab — Prompt · Context · Harness · Loop</title>
+<meta name="description" content="An interactive, single-file sandbox that teaches four core LLM engineering concepts — Prompt, Context, Harness, and Loop — through live calls to the Groq API.">
+<meta property="og:title" content="Prompt Lab — Prompt · Context · Harness · Loop">
+<meta property="og:description" content="An interactive, single-file sandbox that teaches four core LLM engineering concepts — Prompt, Context, Harness, and Loop — through live calls to the Groq API.">
+<meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
@@ -126,7 +130,7 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="eyebrow">TRAINING SANDBOX</div>
+  <div class="eyebrow">LLM ENGINEERING · INTERACTIVE SANDBOX</div>
   <h1>Prompt<br>Lab</h1>
   <p class="sub">Prompt → Context → Harness → Loop. Every button is a real Groq call.</p>
   <div id="topicBar"></div>
@@ -150,20 +154,18 @@ const LAYERS = {
 };
 const MODEL = 'llama-3.3-70b-versatile';
 const TOPIC_KEY = 'promptlab.topic';
-const RUBRIC = `SCORING RUBRIC (Winners DB, 90 pts max):
-- AI-Operability (0-20): every function runs via AI agents, zero humans at any scale
-- Revenue Path (0-20): credible route to $1M cumulative in months 1-12
-- Margin (0-15): 70%+ gross margin after AI/platform/delivery/acquisition costs, shown as breakdown
-- Startup Cost (0-10): under $500 total
-- Primal Need (0-15): rooted in sleep, food, mental peace, connection, or entertainment
-- Moat/Distribution (0-10): defensible channel or advantage
-Gate: 38+ to advance. 70+ = FINAL WINNER quality.`;
+const RUBRIC = `EXAMPLE RUBRIC — edit this for your own use case (100 pts max):
+- Market Need (0-30): would people actually want or pay for this today?
+- Feasibility (0-25): buildable with realistic time, skill, and technology
+- Differentiation (0-25): a clear reason this beats existing alternatives
+- Cost to Build (0-20): lower cost and effort to launch scores higher
+Gate: 50+ to advance. 85+ = STRONG pass.`;
 
 /* ---- topic-driven prompt templates: every learning area builds off the same user topic ---- */
-const buildVaguePrompt = (topic) => 'Evaluate this business idea: ' + topic;
-const buildStructuredPrompt = (topic) => 'You are a venture analyst. Evaluate this business idea in exactly 3 sections: (1) Strengths, (2) Fatal risks, (3) Verdict in one sentence. Be blunt and specific.\n\nIdea: ' + topic;
-const buildExamplePrompt = (topic) => 'You are a venture analyst. Evaluate the idea below.\n\nExample of the verdict style I want: "REJECT — CAC exceeds LTV in every realistic channel; the margin math dies at scale."\n\nGive: (1) Strengths, (2) Fatal risks, (3) A verdict in that exact blunt style.\n\nIdea: ' + topic;
-const buildContextPrompt = (topic) => 'You are the Task 3 evaluator. Score this business idea against the rubric and give a total with per-criterion breakdown, then a one-line verdict.\n\nIdea: ' + topic;
+const buildVaguePrompt = (topic) => 'Evaluate this product idea: ' + topic;
+const buildStructuredPrompt = (topic) => 'You are a product analyst. Evaluate this product idea in exactly 3 sections: (1) Strengths, (2) Fatal risks, (3) Verdict in one sentence. Be blunt and specific.\n\nIdea: ' + topic;
+const buildExamplePrompt = (topic) => 'You are a product analyst. Evaluate the idea below.\n\nExample of the verdict style I want: "REJECT — the cost to build outweighs any realistic differentiation; this loses to existing alternatives."\n\nGive: (1) Strengths, (2) Fatal risks, (3) A verdict in that exact blunt style.\n\nIdea: ' + topic;
+const buildContextPrompt = (topic) => 'You are the product evaluator. Score this product idea against the rubric and give a total with per-criterion breakdown, then a one-line verdict.\n\nIdea: ' + topic;
 const buildHarnessPrompt = (topic) => RUBRIC + '\n\nScore this idea against the rubric.\n\nIdea: ' + topic;
 const buildLoopPrompt = (topic) => RUBRIC + '\n\nScore this idea, name its single biggest weakness, and rewrite it stronger.\n\nIdea: ' + topic;
 
@@ -331,7 +333,7 @@ function viewS2(){
   return `
   <div class="stage-title" style="background:${LAYERS[2].color}">Stage 2 — Context</div>
   ${teach(2,'Same prompt, but the app now <b>prepends your real scoring rubric</b> before the model sees the task. The code change is string concatenation. The output change: the model stops guessing your criteria. Toggle it off and re-run to feel it.')}
-  <div class="toggle-row">Inject Winners DB rubric
+  <div class="toggle-row">Inject example rubric
     <div class="switch ${p.ctxOn?'on':''}" onclick="S.s2.ctxOn=!S.s2.ctxOn;render()"><div class="knob"></div></div>
   </div>
   ${p.ctxOn?`<textarea rows="7" oninput="S.s2.context=this.value">${esc(p.context)}</textarea>`:''}
@@ -353,7 +355,7 @@ async function runS2(){
 }
 
 /* ================= STAGE 3 ================= */
-const JSON_SYS = 'Respond ONLY with valid JSON, no markdown fences, no preamble. Schema: {"score": number (0-90), "strongest": string, "weakest": string, "verdict": string}';
+const JSON_SYS = 'Respond ONLY with valid JSON, no markdown fences, no preamble. Schema: {"score": number (0-100), "strongest": string, "weakest": string, "verdict": string}';
 function viewS3(){
   const p=S.s3;
   return `
@@ -367,7 +369,7 @@ function viewS3(){
       <span class="${e.status==='PASS'?'pass':'fail'}">${e.status}</span>
       <span>${esc(e.detail)}</span></div>`).join('')}</div>`:''}
   ${p.parsed?`<div class="out" style="background:${LAYERS[3].color}">
-    <div class="score-big">${p.parsed.score}<small> / 90</small></div>
+    <div class="score-big">${p.parsed.score}<small> / 100</small></div>
     <div style="font-size:13px;line-height:1.55;margin-top:8px">
       <div><b>Strongest:</b> ${esc(String(p.parsed.strongest))}</div>
       <div><b>Weakest:</b> ${esc(String(p.parsed.weakest))}</div>
@@ -400,8 +402,8 @@ async function runS3(){
 }
 
 /* ================= STAGE 4 ================= */
-const GOAL=70, MAX_ITERS=4;
-const LOOP_SYS = 'Respond ONLY with valid JSON, no fences, no preamble. Schema: {"score": number (0-90), "critique": string (the single biggest weakness), "revisedIdea": string (a rewritten stronger version that fixes that weakness while keeping startup cost under $500 and zero human employees)}';
+const GOAL=85, MAX_ITERS=4;
+const LOOP_SYS = 'Respond ONLY with valid JSON, no fences, no preamble. Schema: {"score": number (0-100), "critique": string (the single biggest weakness), "revisedIdea": string (a rewritten stronger version that fixes that weakness while staying feasible to build and clearly differentiated)}';
 function viewS4(){
   const p=S.s4;
   return `
@@ -416,12 +418,12 @@ function viewS4(){
   ${busyRow('iterating toward score ≥ '+GOAL)}
   ${p.iters.map(it=>`<div class="iter" style="${it.score!==null&&it.score>=GOAL?'background:'+LAYERS[4].color:''}">
     <div class="head"><span>ITERATION ${it.n}</span>
-      <span class="chip">${it.score===null?'ERR':it.score+'/90'}</span></div>
+      <span class="chip">${it.score===null?'ERR':it.score+'/100'}</span></div>
     <div style="font-size:13px;line-height:1.5"><b>Weakness:</b> ${esc(String(it.critique))}</div>
     <div style="font-size:13px;line-height:1.5;margin-top:6px"><b>Revised →</b> ${esc(String(it.revisedIdea))}</div>
   </div>`).join('')}
   ${p.stop?`<div class="stopbox" style="background:${p.stop.startsWith('GOAL')?LAYERS[4].color:'var(--orange)'}">${esc(p.stop)}</div>
-  <div class="take"><b>Takeaway:</b> the unit of work is the <b>run</b>, not the reply. Now paste a real WATCH-tier idea from your Pipeline DB and see if the loop upgrades it past the gate.</div>`:''}`;
+  <div class="take"><b>Takeaway:</b> the unit of work is the <b>run</b>, not the reply. Now paste one of your own ideas and see if the loop strengthens it past the gate.</div>`:''}`;
 }
 async function runS4(){
   S.busy=true; S.s4.iters=[]; S.s4.stop=''; S.s4.stopFlag=false; render();
