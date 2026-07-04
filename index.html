@@ -209,16 +209,19 @@ if(savedTopic){
 }
 
 /* ================= KEY RESOLUTION =================
-   1) config.js (window.GROQ_KEY, injected at deploy time)
-   2) localStorage (a key the user pasted in on this device)
+   1) localStorage (a key the user pasted in on this device — once set,
+      via the prompt() fallback or the tap-to-change control, it wins:
+      that's the only way to recover if the deployed config.js key goes
+      bad, so it must be able to override it)
+   2) config.js (window.GROQ_KEY, injected at deploy time)
    3) native window.prompt() fallback — deliberately not a custom modal */
 function peekKey(){
-  if(typeof window.GROQ_KEY === 'string' && window.GROQ_KEY.indexOf('gsk_') === 0){
-    return { key: window.GROQ_KEY, source: 'config.js' };
-  }
   const stored = safeStorageGet(DEVICE_KEY);
   if(typeof stored === 'string' && stored.indexOf('gsk_') === 0){
     return { key: stored, source: 'this device' };
+  }
+  if(typeof window.GROQ_KEY === 'string' && window.GROQ_KEY.indexOf('gsk_') === 0){
+    return { key: window.GROQ_KEY, source: 'config.js' };
   }
   return { key:'', source:null };
 }
