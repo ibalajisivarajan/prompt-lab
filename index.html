@@ -4,9 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Prompt Lab — Prompt · Context · Harness · Loop</title>
-<meta name="description" content="An interactive, single-file sandbox that teaches four core LLM engineering concepts — Prompt, Context, Harness, and Loop — through live calls to the Groq API.">
+<meta name="description" content="An interactive, single-file sandbox that teaches four core LLM engineering concepts — Prompt, Context, Harness, and Loop — on any topic you type, generated live by the Groq API.">
 <meta property="og:title" content="Prompt Lab — Prompt · Context · Harness · Loop">
-<meta property="og:description" content="An interactive, single-file sandbox that teaches four core LLM engineering concepts — Prompt, Context, Harness, and Loop — through live calls to the Groq API.">
+<meta property="og:description" content="An interactive, single-file sandbox that teaches four core LLM engineering concepts — Prompt, Context, Harness, and Loop — on any topic you type, generated live by the Groq API.">
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -71,7 +71,7 @@
   .teach .tag{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1.5px;
     text-transform:uppercase;display:block;margin-bottom:5px}
 
-  textarea{
+  input[type="text"], textarea{
     width:100%;border:3px solid var(--ink);border-radius:14px;padding:12px;
     font-family:'Space Mono',monospace;font-size:12.5px;line-height:1.5;background:#fff;
     resize:vertical;outline:none;margin-bottom:12px;
@@ -82,6 +82,7 @@
     font-weight:700;font-size:12px;background:#fff;cursor:pointer;
   }
   .preset.on{background:var(--orange);box-shadow:var(--shadow-sm)}
+  .preset:disabled{opacity:.5;pointer-events:none}
 
   .out{
     border:3px solid var(--ink);border-radius:14px;background:#fff;
@@ -126,14 +127,23 @@
   .err{color:#B3261E;font-weight:700;font-size:13px;margin-top:10px}
 
   .hidden{display:none}
+
+  /* topic gate additions */
+  .counter{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;text-align:right;margin:-8px 0 12px;opacity:.7}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+  .chip-hint{border:2px solid var(--ink);border-radius:20px;padding:5px 11px;font-size:11.5px;font-weight:700;
+    background:#fff;cursor:pointer}
+  .chip-hint:active{background:var(--orange)}
+  .keybar{font-size:11.5px;font-weight:700;margin:-6px 0 14px;opacity:.85;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="eyebrow">LLM ENGINEERING · INTERACTIVE SANDBOX</div>
   <h1>Prompt<br>Lab</h1>
-  <p class="sub">Prompt → Context → Harness → Loop. Every button is a real Groq call.</p>
+  <p class="sub">Prompt → Context → Harness → Loop. Every button is a real Groq call, generated live for your topic.</p>
   <div id="topicBar"></div>
+  <div id="keyBar"></div>
   <div class="tabs" id="tabs"></div>
   <div class="card" id="stageCard"></div>
 
@@ -145,7 +155,7 @@
 
 <script src="config.js"></script>
 <script>
-/* ================= STATE ================= */
+/* ================= CONSTANTS ================= */
 const LAYERS = {
   1:{name:'Prompt', color:'var(--orange)'},
   2:{name:'Context',color:'var(--lime)'},
@@ -154,60 +164,83 @@ const LAYERS = {
 };
 const MODEL = 'llama-3.3-70b-versatile';
 const TOPIC_KEY = 'promptlab.topic';
-const RUBRIC = `EXAMPLE RUBRIC — edit this for your own use case (100 pts max):
-- Market Need (0-30): would people actually want or pay for this today?
-- Feasibility (0-25): buildable with realistic time, skill, and technology
-- Differentiation (0-25): a clear reason this beats existing alternatives
-- Cost to Build (0-20): lower cost and effort to launch scores higher
-Gate: 50+ to advance. 85+ = STRONG pass.`;
+const DEVICE_KEY = 'promptlab.groqkey';
+const TOPIC_MAX_CHARS = 60;
+const TOPIC_MAX_WORDS = 10;
+const HINTS = ['weekly status report', 'love letter', 'grocery list', 'app idea', 'business pitch'];
 
-/* ---- topic-driven prompt templates: every learning area builds off the same user topic ---- */
-const buildVaguePrompt = (topic) => 'Evaluate this product idea: ' + topic;
-const buildStructuredPrompt = (topic) => 'You are a product analyst. Evaluate this product idea in exactly 3 sections: (1) Strengths, (2) Fatal risks, (3) Verdict in one sentence. Be blunt and specific.\n\nIdea: ' + topic;
-const buildExamplePrompt = (topic) => 'You are a product analyst. Evaluate the idea below.\n\nExample of the verdict style I want: "REJECT — the cost to build outweighs any realistic differentiation; this loses to existing alternatives."\n\nGive: (1) Strengths, (2) Fatal risks, (3) A verdict in that exact blunt style.\n\nIdea: ' + topic;
-const buildContextPrompt = (topic) => 'You are the product evaluator. Score this product idea against the rubric and give a total with per-criterion breakdown, then a one-line verdict.\n\nIdea: ' + topic;
-const buildHarnessPrompt = (topic) => RUBRIC + '\n\nScore this idea against the rubric.\n\nIdea: ' + topic;
-const buildLoopPrompt = (topic) => RUBRIC + '\n\nScore this idea, name its single biggest weakness, and rewrite it stronger.\n\nIdea: ' + topic;
+/* ---- topic-driven prompt/system templates: nothing below references a fixed topic ---- */
+const STAGE1_SYSTEM = 'You are a prompt engineering coach. Given a user\'s topic, write 3 different prompts a person could send to an AI assistant to accomplish that topic: one minimal/vague version, one structured version (clear role, task, format), one version that includes a short embedded example of the desired output style. Respond ONLY as JSON: {"vague": string, "structured": string, "withExample": string} — each a ready-to-send prompt string, each grounded in the user\'s actual topic, not generic placeholders.';
+const buildStage1User = (topic) => 'My topic: ' + topic;
 
-function buildPrompts(topic){
-  return { vague: buildVaguePrompt(topic), structured: buildStructuredPrompt(topic), examples: buildExamplePrompt(topic) };
-}
+const buildStage2ContextGen = (topic) => 'Given this topic: ' + topic + ', generate a short, genuinely useful piece of background context a person would want an AI to have before helping with this — e.g. a template, a style reference, a checklist, or key constraints relevant to this exact topic. 80-150 words, plain text, no preamble.';
+const buildStage2TaskPrompt = (topic) => 'Help me with the following: ' + topic + '. Give a complete, usable result.';
 
-let PROMPTS = { vague:'', structured:'', examples:'' };
-let S2_PROMPT = '';
+const STAGE3_JSON_SYS = 'Respond ONLY with valid JSON, no markdown fences, no preamble. Schema: {"qualityScore": number (0-100), "keyStrength": string, "improvementSuggestion": string, "output": string (the actual deliverable for the topic — the actual letter, list, report, or whatever the topic asks for)}';
+const buildStage3User = (topic) => 'Complete this request: ' + topic + '. Score your own output quality 0-100 in qualityScore.';
 
-function freshStageState(topic){
-  PROMPTS = buildPrompts(topic);
-  S2_PROMPT = buildContextPrompt(topic);
-  return {
-    stage:1, unlocked:1, busy:false,
-    s1:{preset:'vague', prompt:PROMPTS.vague, out:'', err:''},
-    s2:{ctxOn:true, context:RUBRIC, out:''},
-    s3:{log:[], parsed:null},
-    s4:{idea:topic, iters:[], stop:'', stopFlag:false},
-  };
-}
+const buildStage4SeedGen = (topic) => 'Write a rough first-pass attempt at: ' + topic + '. Keep it brief, it\'s meant to be improved.';
+const STAGE4_LOOP_SYS = 'Respond ONLY with valid JSON, no fences, no preamble. Schema: {"qualityScore": number (0-100), "critique": string (the single biggest weakness), "revisedOutput": string (an improved version of the deliverable that better achieves the original goal)}';
+const buildStage4LoopUser = (topic, draft) => 'Original goal: ' + topic + '\n\nCurrent draft:\n' + draft + '\n\nScore this draft\'s quality (0-100), name its single biggest weakness, and rewrite it as an improved version that better achieves the original goal.';
 
+const GOAL = 85, MAX_ITERS = 4;
+
+/* ================= STORAGE (best-effort — never throws) ================= */
 function safeStorageGet(key){ try{ return localStorage.getItem(key); }catch(_){ return null; } }
 function safeStorageSet(key, val){ try{ localStorage.setItem(key, val); }catch(_){} }
 function safeStorageRemove(key){ try{ localStorage.removeItem(key); }catch(_){} }
 
-let S = { topic:null, topicDraft:'', topicErr:'', busy:false };
+/* ================= STATE ================= */
+function freshStageState(){
+  return {
+    stage:1, unlocked:1, busy:false,
+    s1:{ generating:true, err:'', vague:'', structured:'', withExample:'', preset:'vague', prompt:'', out:'', sendErr:'' },
+    s2:{ generating:false, loaded:false, err:'', context:'', ctxOn:true, out:'', runErr:'' },
+    s3:{ log:[], parsed:null },
+    s4:{ generating:false, loaded:false, err:'', draft:'', iters:[], stop:'', stopFlag:false },
+  };
+}
+
+let S = { topic:null, topicDraft:'', keyDraft:'' };
 const savedTopic = safeStorageGet(TOPIC_KEY);
 if(savedTopic){
-  Object.assign(S, freshStageState(savedTopic));
+  Object.assign(S, freshStageState());
   S.topic = savedTopic;
 }
 
-/* ================= KEY =================
-   The API key is injected by the Pages workflow into config.js as window.GROQ_KEY. */
-function getKey(){
-  return (typeof window.GROQ_KEY === 'string' && window.GROQ_KEY.indexOf('gsk_') === 0) ? window.GROQ_KEY : '';
+/* ================= KEY RESOLUTION =================
+   1) config.js (window.GROQ_KEY, injected at deploy time)
+   2) localStorage (a key the user pasted in on this device)
+   3) native window.prompt() fallback — deliberately not a custom modal */
+function peekKey(){
+  if(typeof window.GROQ_KEY === 'string' && window.GROQ_KEY.indexOf('gsk_') === 0){
+    return { key: window.GROQ_KEY, source: 'config.js' };
+  }
+  const stored = safeStorageGet(DEVICE_KEY);
+  if(typeof stored === 'string' && stored.indexOf('gsk_') === 0){
+    return { key: stored, source: 'this device' };
+  }
+  return { key:'', source:null };
+}
+function resolveKey(){
+  const peeked = peekKey();
+  if(peeked.key) return peeked.key;
+  const entered = window.prompt('No Groq API key found. Paste your Groq API key (gsk_...) to continue. It is stored on this device only:', '');
+  if(entered && entered.indexOf('gsk_') === 0){
+    safeStorageSet(DEVICE_KEY, entered);
+    return entered;
+  }
+  return '';
+}
+function changeKey(){
+  const entered = window.prompt('Paste your Groq API key (gsk_...). Stored on this device only:', '');
+  if(entered && entered.indexOf('gsk_') === 0){ safeStorageSet(DEVICE_KEY, entered); }
+  render();
 }
 
 /* ================= GROQ ================= */
 async function callGroq(userContent, system){
-  const key = getKey();
+  const key = resolveKey();
   if(!key){ throw new Error('CONFIG_KEY_MISSING'); }
   const messages = [];
   if(system) messages.push({role:'system', content:system});
@@ -226,10 +259,12 @@ async function callGroq(userContent, system){
 }
 function stripFences(t){ return t.replace(/```json|```/g,'').trim(); }
 function esc(t){ const d=document.createElement('div'); d.textContent=t; return d.innerHTML; }
+function keyMissingMsg(){ return 'No Groq API key available. Add one when prompted, or check config.js.'; }
 
 /* ================= RENDER ================= */
 function render(){
   renderTopicBar();
+  renderKeyBar();
   const el = document.getElementById('stageCard');
   const tabsEl = document.getElementById('tabs');
   if(!S.topic){
@@ -247,41 +282,80 @@ function renderTopicBar(){
   const b = document.getElementById('topicBar');
   if(!b) return;
   if(!S.topic){ b.innerHTML=''; return; }
-  b.innerHTML = `<div style="font-size:12.5px;font-weight:700;margin:-6px 0 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+  b.innerHTML = `<div style="font-size:12.5px;font-weight:700;margin:-6px 0 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
     <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">Topic: ${esc(S.topic)}</span>
     <button class="btn" style="padding:5px 10px;font-size:11px;flex:none" onclick="changeTopic()">Change topic</button>
   </div>`;
 }
+function renderKeyBar(){
+  const b = document.getElementById('keyBar');
+  if(!b) return;
+  if(!S.topic){ b.innerHTML=''; return; }
+  const peeked = peekKey();
+  const label = peeked.key ? ('Key: ••••' + peeked.key.slice(-4) + ' (' + peeked.source + ')') : 'No key yet — tap to add one';
+  b.innerHTML = `<div class="keybar" onclick="changeKey()">${esc(label)}</div>`;
+}
 
 /* ================= TOPIC GATE ================= */
+function clampWords(raw){
+  let count = 0, cut = raw.length, inWord = false;
+  for(let i=0;i<raw.length;i++){
+    const isSpace = /\s/.test(raw[i]);
+    if(!isSpace && !inWord){ count++; inWord = true; if(count > TOPIC_MAX_WORDS){ cut = i; break; } }
+    if(isSpace) inWord = false;
+  }
+  return raw.slice(0, cut);
+}
 function viewTopicGate(){
+  const val = S.topicDraft || '';
+  const hasWord = /\S/.test(val);
   return `
-  <div class="stage-title" style="background:${LAYERS[1].color}">Pick a topic</div>
-  ${teach(1,'Every stage below — <b>Prompt, Context, Harness, Loop</b> — runs on the same topic. Enter a business idea, product idea, or problem once, then watch the same prompt improve across layers.')}
-  <textarea id="topicInput" rows="3" placeholder="e.g. AI app that turns Google Photos albums into memory movies" oninput="onTopicInput(this.value)">${esc(S.topicDraft||'')}</textarea>
-  <button class="btn full" style="background:${LAYERS[1].color}" onclick="submitTopic()">Start Prompt Lab</button>
-  ${S.topicErr?`<div class="err">${esc(S.topicErr)}</div>`:''}
+  <div class="stage-title" style="background:${LAYERS[1].color}">What do you want to work on?</div>
+  ${teach(1,'Type anything — a business idea, a love letter, a grocery list, a status report, an app spec. Nothing is baked in: every stage below is generated live from your topic.')}
+  <input id="topicInput" type="text" maxlength="${TOPIC_MAX_CHARS}" placeholder="e.g. weekly status report for my team"
+    value="${esc(val)}" oninput="onTopicInput(this)">
+  <div class="counter" id="topicCounter">${val.length}/${TOPIC_MAX_CHARS}</div>
+  <div class="chips">
+    ${HINTS.map(h=>`<div class="chip-hint" onclick="pickHint('${h.replace(/'/g,"\\'")}')">${esc(h)}</div>`).join('')}
+  </div>
+  <button id="topicSubmitBtn" class="btn full" style="background:${LAYERS[1].color}" ${hasWord?'':'disabled'} onclick="submitTopic()">Start Prompt Lab</button>
+  ${S.topicSetupErr?`<div class="err">${esc(S.topicSetupErr)}</div>
+  <button class="btn full" style="margin-top:8px" onclick="submitTopic()">Try again</button>`:''}
   `;
 }
-function onTopicInput(v){ S.topicDraft = v; }
-function wordCount(s){ return (s.trim().match(/\S+/g)||[]).length; }
-function submitTopic(){
-  const val = (S.topicDraft||'').trim();
-  if(!val){ S.topicErr = 'Enter a topic to continue.'; render(); return; }
-  const wc = wordCount(val);
-  if(wc<4 || wc>25){ S.topicErr = 'Enter a topic in 4 to 25 words.'; render(); return; }
-  safeStorageSet(TOPIC_KEY, val);
-  Object.assign(S, freshStageState(val));
-  S.topic = val; S.topicDraft = ''; S.topicErr = '';
+function onTopicInput(el){
+  const clamped = clampWords(el.value);
+  if(clamped !== el.value){ el.value = clamped; }
+  S.topicDraft = clamped;
+  const counter = document.getElementById('topicCounter');
+  if(counter) counter.textContent = clamped.length + '/' + TOPIC_MAX_CHARS;
+  const btn = document.getElementById('topicSubmitBtn');
+  if(btn) btn.disabled = !/\S/.test(clamped);
+}
+function pickHint(h){
+  S.topicDraft = h;
   render();
+}
+async function submitTopic(){
+  const val = (S.topicDraft||'').trim();
+  if(!/\S/.test(val)) return;
+  S.topic = val;
+  S.topicSetupErr = '';
+  safeStorageSet(TOPIC_KEY, val);
+  Object.assign(S, freshStageState());
+  S.topic = val;
+  render();
+  await generateStage1Prompts();
 }
 function changeTopic(){
   if(S.busy) return;
   S.topicDraft = S.topic || '';
-  S.topic = null; S.topicErr = '';
+  S.topic = null; S.topicSetupErr = '';
   safeStorageRemove(TOPIC_KEY);
   render();
 }
+
+/* ================= TABS / NAV ================= */
 function renderTabs(){
   const t = document.getElementById('tabs');
   t.innerHTML = [1,2,3,4].map(i=>{
@@ -292,7 +366,12 @@ function renderTabs(){
       <span class="n">${un?i:'🔒'}</span>${L.name}</div>`;
   }).join('');
 }
-function go(i){ if(!S.busy){ S.stage=i; render(); } }
+function go(i){
+  if(S.busy) return;
+  S.stage=i; render();
+  if(i===2 && !S.s2.loaded && !S.s2.generating) generateStage2Context();
+  if(i===4 && !S.s4.loaded && !S.s4.generating) generateStage4Seed();
+}
 function complete(i){ if(i>=S.unlocked) S.unlocked=Math.min(i+1,4); }
 
 function teach(stage, html){
@@ -301,61 +380,111 @@ function teach(stage, html){
 }
 function busyRow(txt){ return S.busy?`<div class="busy"><span class="spin"></span>${txt}</div>`:''; }
 
-/* ================= STAGE 1 ================= */
+/* ================= STAGE 1 — PROMPT (dynamic) ================= */
+async function generateStage1Prompts(){
+  S.s1.generating = true; S.s1.err = ''; S.busy = true; render();
+  try{
+    const raw = await callGroq(buildStage1User(S.topic), STAGE1_SYSTEM);
+    const obj = JSON.parse(stripFences(raw));
+    if(!obj.vague || !obj.structured || !obj.withExample) throw new Error('incomplete response');
+    S.s1.vague = obj.vague; S.s1.structured = obj.structured; S.s1.withExample = obj.withExample;
+    S.s1.preset = 'vague'; S.s1.prompt = obj.vague;
+  }catch(e){
+    S.s1.err = e.message==='CONFIG_KEY_MISSING' ? keyMissingMsg() : 'Could not generate starter prompts (' + e.message + ').';
+  }
+  S.s1.generating = false; S.busy = false; render();
+}
 function viewS1(){
   const p=S.s1;
+  if(p.generating){
+    return `
+    <div class="stage-title" style="background:${LAYERS[1].color}">Stage 1 — Prompt</div>
+    ${teach(1,'One assembled input → one raw output. No grounding data, no validation, no retry. Try all three presets on the <b>same topic</b> and compare. Then notice what wording alone cannot fix.')}
+    <div class="busy"><span class="spin"></span>Writing 3 starter prompts for your topic…</div>`;
+  }
+  if(p.err){
+    return `
+    <div class="stage-title" style="background:${LAYERS[1].color}">Stage 1 — Prompt</div>
+    <div class="err">${esc(p.err)}</div>
+    <button class="btn full" style="margin-top:10px" onclick="generateStage1Prompts()">Try again</button>`;
+  }
   return `
   <div class="stage-title" style="background:${LAYERS[1].color}">Stage 1 — Prompt</div>
-  ${teach(1,'One assembled input → one raw output. No grounding data, no validation, no retry. Try all three presets on the <b>same idea</b> and compare. Then notice what wording alone cannot fix.')}
+  ${teach(1,'One assembled input → one raw output. No grounding data, no validation, no retry. Try all three presets on the <b>same topic</b> and compare. Then notice what wording alone cannot fix.')}
   <div class="presets">
-    ${[['Vague','vague'],['Structured','structured'],['W/ example','examples']].map(([l,k])=>
+    ${[['Vague','vague'],['Structured','structured'],['W/ example','withExample']].map(([l,k])=>
       `<button class="preset ${p.preset===k?'on':''}" onclick="setPreset('${k}')">${l}</button>`).join('')}
   </div>
   <textarea id="s1prompt" rows="6" oninput="S.s1.prompt=this.value">${esc(p.prompt)}</textarea>
   <button class="btn full" style="background:${LAYERS[1].color}" ${S.busy?'disabled':''} onclick="runS1()">
     ${S.busy?'Calling model…':'Send prompt'}</button>
   ${busyRow('one input → one output')}
-  ${p.err?`<div class="err">${esc(p.err)}</div>`:''}
+  ${p.sendErr?`<div class="err">${esc(p.sendErr)}</div>`:''}
   ${p.out?`<div class="out"><div class="lbl">Raw response</div><div class="body">${esc(p.out)}</div></div>
-  <div class="take"><b>Takeaway:</b> better wording → better output, but the model still guesses your criteria. It doesn't know your rubric exists. That's a <b>context</b> problem — Stage 2 unlocked.</div>`:''}`;
+  <div class="take"><b>Takeaway:</b> better wording → better output, but the model still guesses your criteria. It doesn't know your context. That's a <b>context</b> problem — Stage 2 unlocked.</div>`:''}`;
 }
-function setPreset(k){ S.s1.preset=k; S.s1.prompt=PROMPTS[k]; render(); }
+function setPreset(k){ S.s1.preset=k; S.s1.prompt=S.s1[k]; render(); }
 async function runS1(){
-  S.busy=true; S.s1.out=''; S.s1.err=''; render();
+  S.busy=true; S.s1.out=''; S.s1.sendErr=''; render();
   try{ S.s1.out = await callGroq(S.s1.prompt); complete(1); }
-  catch(e){ S.s1.err = e.message==='CONFIG_KEY_MISSING'?'API key is unavailable. Check the repo secret and generated config.js.':'Call failed ('+e.message+'). Run again — Stage 1 has no retry. That is the point.'; }
+  catch(e){ S.s1.sendErr = e.message==='CONFIG_KEY_MISSING'?keyMissingMsg():'Call failed ('+e.message+'). Run again — Stage 1 has no retry. That is the point.'; }
   S.busy=false; render();
 }
 
-/* ================= STAGE 2 ================= */
+/* ================= STAGE 2 — CONTEXT (dynamic) ================= */
+async function generateStage2Context(){
+  S.s2.generating = true; S.s2.err = ''; S.busy = true; render();
+  try{
+    const raw = await callGroq(buildStage2ContextGen(S.topic));
+    S.s2.context = raw.trim();
+    S.s2.loaded = true;
+  }catch(e){
+    S.s2.err = e.message==='CONFIG_KEY_MISSING' ? keyMissingMsg() : 'Could not generate context (' + e.message + ').';
+  }
+  S.s2.generating = false; S.busy = false; render();
+}
 function viewS2(){
   const p=S.s2;
+  const taskPrompt = buildStage2TaskPrompt(S.topic);
+  if(p.generating){
+    return `
+    <div class="stage-title" style="background:${LAYERS[2].color}">Stage 2 — Context</div>
+    ${teach(2,'Same prompt, but the app now prepends real background context before the model sees the task. Toggle it off and re-run to feel the difference.')}
+    <div class="busy"><span class="spin"></span>Generating context for your topic…</div>`;
+  }
+  if(p.err){
+    return `
+    <div class="stage-title" style="background:${LAYERS[2].color}">Stage 2 — Context</div>
+    <div class="err">${esc(p.err)}</div>
+    <button class="btn full" style="margin-top:10px" onclick="generateStage2Context()">Try again</button>`;
+  }
   return `
   <div class="stage-title" style="background:${LAYERS[2].color}">Stage 2 — Context</div>
-  ${teach(2,'Same prompt, but the app now <b>prepends your real scoring rubric</b> before the model sees the task. The code change is string concatenation. The output change: the model stops guessing your criteria. Toggle it off and re-run to feel it.')}
-  <div class="toggle-row">Inject example rubric
+  ${teach(2,'Same prompt, but the app now <b>prepends generated background context</b> before the model sees the task. The code change is string concatenation. The output change: the model stops guessing. Toggle it off and re-run to feel it.')}
+  <div class="toggle-row">Inject generated context
     <div class="switch ${p.ctxOn?'on':''}" onclick="S.s2.ctxOn=!S.s2.ctxOn;render()"><div class="knob"></div></div>
   </div>
   ${p.ctxOn?`<textarea rows="7" oninput="S.s2.context=this.value">${esc(p.context)}</textarea>`:''}
   <div class="out" style="margin:0 0 12px;box-shadow:none"><div class="lbl">Fixed prompt</div>
-    <div class="body" style="font-family:'Space Mono',monospace;font-size:12px">${esc(S2_PROMPT)}</div></div>
+    <div class="body" style="font-family:'Space Mono',monospace;font-size:12px">${esc(taskPrompt)}</div></div>
   <button class="btn full" style="background:${LAYERS[2].color}" ${S.busy?'disabled':''} onclick="runS2()">
     ${S.busy?'Calling model…':(p.ctxOn?'Run WITH context':'Run WITHOUT context')}</button>
   ${busyRow('context + prompt → model')}
+  ${p.runErr?`<div class="err">${esc(p.runErr)}</div>`:''}
   ${p.out?`<div class="out"><div class="lbl">${p.ctxOn?'Grounded':'Ungrounded'} response</div><div class="body">${esc(p.out)}</div></div>
   <div class="take"><b>Takeaway:</b> context beats cleverness. But output is still free text — nothing guarantees it parses, nothing catches failure. That's a <b>harness</b> problem — Stage 3 unlocked.</div>`:''}`;
 }
 async function runS2(){
-  S.busy=true; S.s2.out=''; render();
+  S.busy=true; S.s2.out=''; S.s2.runErr=''; render();
   try{
-    const full = S.s2.ctxOn ? S.s2.context+'\n\n---\n\n'+S2_PROMPT : S2_PROMPT;
+    const taskPrompt = buildStage2TaskPrompt(S.topic);
+    const full = S.s2.ctxOn ? S.s2.context+'\n\n---\n\n'+taskPrompt : taskPrompt;
     S.s2.out = await callGroq(full); complete(2);
-  }catch(e){ S.s2.out = e.message==='CONFIG_KEY_MISSING'?'API key is unavailable. Check the repo secret and generated config.js.':'Call failed — try again. ('+e.message+')'; }
+  }catch(e){ S.s2.runErr = e.message==='CONFIG_KEY_MISSING'?keyMissingMsg():'Call failed — try again. ('+e.message+')'; }
   S.busy=false; render();
 }
 
-/* ================= STAGE 3 ================= */
-const JSON_SYS = 'Respond ONLY with valid JSON, no markdown fences, no preamble. Schema: {"score": number (0-100), "strongest": string, "weakest": string, "verdict": string}';
+/* ================= STAGE 3 — HARNESS (dynamic, generic schema) ================= */
 function viewS3(){
   const p=S.s3;
   return `
@@ -369,12 +498,12 @@ function viewS3(){
       <span class="${e.status==='PASS'?'pass':'fail'}">${e.status}</span>
       <span>${esc(e.detail)}</span></div>`).join('')}</div>`:''}
   ${p.parsed?`<div class="out" style="background:${LAYERS[3].color}">
-    <div class="score-big">${p.parsed.score}<small> / 100</small></div>
+    <div class="score-big">${p.parsed.qualityScore}<small> / 100</small></div>
     <div style="font-size:13px;line-height:1.55;margin-top:8px">
-      <div><b>Strongest:</b> ${esc(String(p.parsed.strongest))}</div>
-      <div><b>Weakest:</b> ${esc(String(p.parsed.weakest))}</div>
-      <div style="margin-top:4px">${esc(String(p.parsed.verdict))}</div></div></div>
-  <div class="take"><b>Takeaway:</b> structured output + validation + retry = a call you can build on. But it's still <b>one</b> call. Improving an idea until it clears a bar is a <b>loop</b> problem — Stage 4 unlocked.</div>`:''}`;
+      <div><b>Key strength:</b> ${esc(String(p.parsed.keyStrength))}</div>
+      <div><b>Improvement suggestion:</b> ${esc(String(p.parsed.improvementSuggestion))}</div></div></div>
+  <div class="out"><div class="lbl">Generated output</div><div class="body">${esc(String(p.parsed.output))}</div></div>
+  <div class="take"><b>Takeaway:</b> structured output + validation + retry = a call you can build on. But it's still <b>one</b> call. Improving something until it clears a bar is a <b>loop</b> problem — Stage 4 unlocked.</div>`:''}`;
 }
 async function runS3(){
   S.busy=true; S.s3={log:[],parsed:null}; render();
@@ -382,7 +511,7 @@ async function runS3(){
   for(let a=1;a<=MAX;a++){
     const t0=Date.now();
     try{
-      const raw = await callGroq(buildHarnessPrompt(S.topic), JSON_SYS);
+      const raw = await callGroq(buildStage3User(S.topic), STAGE3_JSON_SYS);
       const ms=Date.now()-t0;
       try{
         const obj = JSON.parse(stripFences(raw));
@@ -393,7 +522,7 @@ async function runS3(){
         render();
       }
     }catch(e){
-      if(e.message==='CONFIG_KEY_MISSING'){ S.s3.log.push({attempt:a,status:'FAIL',detail:'config.js key missing'}); S.busy=false; render(); return; }
+      if(e.message==='CONFIG_KEY_MISSING'){ S.s3.log.push({attempt:a,status:'FAIL',detail:'no API key available'}); S.busy=false; render(); return; }
       S.s3.log.push({attempt:a,status:'FAIL',detail:'network/API error · '+(a<MAX?'auto-retrying':'brake tripped')});
       render();
     }
@@ -401,48 +530,68 @@ async function runS3(){
   S.busy=false; render();
 }
 
-/* ================= STAGE 4 ================= */
-const GOAL=85, MAX_ITERS=4;
-const LOOP_SYS = 'Respond ONLY with valid JSON, no fences, no preamble. Schema: {"score": number (0-100), "critique": string (the single biggest weakness), "revisedIdea": string (a rewritten stronger version that fixes that weakness while staying feasible to build and clearly differentiated)}';
+/* ================= STAGE 4 — LOOP (dynamic, generic goal) ================= */
+async function generateStage4Seed(){
+  S.s4.generating = true; S.s4.err = ''; S.busy = true; render();
+  try{
+    S.s4.draft = (await callGroq(buildStage4SeedGen(S.topic))).trim();
+    S.s4.loaded = true;
+  }catch(e){
+    S.s4.err = e.message==='CONFIG_KEY_MISSING' ? keyMissingMsg() : 'Could not generate a starting draft (' + e.message + ').';
+  }
+  S.s4.generating = false; S.busy = false; render();
+}
 function viewS4(){
   const p=S.s4;
+  if(p.generating){
+    return `
+    <div class="stage-title" style="background:${LAYERS[4].color}">Stage 4 — Loop</div>
+    ${teach(4,`Goal + stop rule: <b>revise until quality ≥ ${GOAL}, max ${MAX_ITERS} iterations</b>. Each cycle: score → critique → revise → re-score, feeding results back as new context.`)}
+    <div class="busy"><span class="spin"></span>Writing a rough starting draft…</div>`;
+  }
+  if(p.err){
+    return `
+    <div class="stage-title" style="background:${LAYERS[4].color}">Stage 4 — Loop</div>
+    <div class="err">${esc(p.err)}</div>
+    <button class="btn full" style="margin-top:10px" onclick="generateStage4Seed()">Try again</button>`;
+  }
   return `
   <div class="stage-title" style="background:${LAYERS[4].color}">Stage 4 — Loop</div>
-  ${teach(4,`Goal + stop rule: <b>revise until score ≥ ${GOAL}, max ${MAX_ITERS} iterations</b>. Each cycle: score → critique → revise → re-score, feeding results back as new context. The run ends when the job is done or the brake trips — never "when the model stops talking."`)}
-  <textarea rows="3" oninput="S.s4.idea=this.value">${esc(p.idea)}</textarea>
+  ${teach(4,`Goal + stop rule: <b>revise until quality ≥ ${GOAL}, max ${MAX_ITERS} iterations</b>. Each cycle: score → critique → revise → re-score, feeding results back as new context. The run ends when the job is done or the brake trips — never "when the model stops talking."`)}
+  <textarea rows="4" oninput="S.s4.draft=this.value">${esc(p.draft)}</textarea>
   <div style="display:flex;gap:8px">
     <button class="btn full" style="background:${LAYERS[4].color};flex:3" ${S.busy?'disabled':''} onclick="runS4()">
       ${S.busy?'Loop running…':'Run loop'}</button>
     <button class="btn" style="background:var(--red);flex:1" ${S.busy?'':'disabled'} onclick="S.s4.stopFlag=true">STOP</button>
   </div>
-  ${busyRow('iterating toward score ≥ '+GOAL)}
+  ${busyRow('iterating toward quality ≥ '+GOAL)}
   ${p.iters.map(it=>`<div class="iter" style="${it.score!==null&&it.score>=GOAL?'background:'+LAYERS[4].color:''}">
     <div class="head"><span>ITERATION ${it.n}</span>
       <span class="chip">${it.score===null?'ERR':it.score+'/100'}</span></div>
-    <div style="font-size:13px;line-height:1.5"><b>Weakness:</b> ${esc(String(it.critique))}</div>
-    <div style="font-size:13px;line-height:1.5;margin-top:6px"><b>Revised →</b> ${esc(String(it.revisedIdea))}</div>
+    <div style="font-size:13px;line-height:1.5"><b>Improvement needed:</b> ${esc(String(it.critique))}</div>
+    <div style="font-size:13px;line-height:1.5;margin-top:6px"><b>Revised output →</b> ${esc(String(it.revisedOutput))}</div>
   </div>`).join('')}
   ${p.stop?`<div class="stopbox" style="background:${p.stop.startsWith('GOAL')?LAYERS[4].color:'var(--orange)'}">${esc(p.stop)}</div>
-  <div class="take"><b>Takeaway:</b> the unit of work is the <b>run</b>, not the reply. Now paste one of your own ideas and see if the loop strengthens it past the gate.</div>`:''}`;
+  <div class="take"><b>Takeaway:</b> the unit of work is the <b>run</b>, not the reply. Try a different topic and see how the loop adapts.</div>`:''}`;
 }
 async function runS4(){
   S.busy=true; S.s4.iters=[]; S.s4.stop=''; S.s4.stopFlag=false; render();
-  let current=S.s4.idea;
+  let current=S.s4.draft;
   for(let i=1;i<=MAX_ITERS;i++){
     if(S.s4.stopFlag){ S.s4.stop='STOPPED — manual brake'; break; }
     try{
-      const raw = await callGroq(buildLoopPrompt(current), LOOP_SYS);
+      const raw = await callGroq(buildStage4LoopUser(S.topic, current), STAGE4_LOOP_SYS);
       const obj = JSON.parse(stripFences(raw));
-      S.s4.iters.push({n:i,score:obj.score,critique:obj.critique,revisedIdea:obj.revisedIdea});
+      S.s4.iters.push({n:i,score:obj.qualityScore,critique:obj.critique,revisedOutput:obj.revisedOutput});
       render();
-      if(obj.score>=GOAL){
-        S.s4.stop='GOAL MET — score '+obj.score+' ≥ '+GOAL+' in '+i+' iteration'+(i>1?'s':'');
+      if(obj.qualityScore>=GOAL){
+        S.s4.stop='GOAL MET — quality '+obj.qualityScore+' ≥ '+GOAL+' in '+i+' iteration'+(i>1?'s':'');
         complete(4); S.busy=false; render(); return;
       }
-      current=obj.revisedIdea;
+      current=obj.revisedOutput;
     }catch(e){
-      if(e.message==='CONFIG_KEY_MISSING'){ S.s4.stop='CONFIG ERROR — config.js did not provide the repo API key'; S.busy=false; render(); return; }
-      S.s4.iters.push({n:i,score:null,critique:'iteration failed (parse/network) — loop continues',revisedIdea:current});
+      if(e.message==='CONFIG_KEY_MISSING'){ S.s4.stop='CONFIG ERROR — no API key available'; S.busy=false; render(); return; }
+      S.s4.iters.push({n:i,score:null,critique:'iteration failed (parse/network) — loop continues',revisedOutput:current});
       render();
     }
   }
@@ -452,6 +601,7 @@ async function runS4(){
 
 /* ================= INIT ================= */
 render();
+if(S.topic && S.s1.generating && !S.s1.vague && !S.s1.err){ generateStage1Prompts(); }
 </script>
 </body>
 </html>

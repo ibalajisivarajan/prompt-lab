@@ -4,36 +4,57 @@ A single-file, zero-backend, interactive sandbox that teaches four core LLM
 engineering concepts by having you feel the difference each one makes,
 using real calls to the [Groq API](https://groq.com).
 
-**Live app:** [ibalajisivarajan.github.io](https://ibalajisivarajan.github.io/)
+**Nothing in this app is hardcoded to any one topic or domain.** Type
+anything — a business idea, a love letter, a grocery list, a status report,
+an app spec, a grant proposal, whatever — and every stage below generates
+its content live, from your topic, via Groq. There is no fixed example
+idea, no fixed rubric, and no schema field names tied to one kind of task.
+
+**Live app:** [ibalajisivarajan.github.io/prompt-lab](https://ibalajisivarajan.github.io/prompt-lab/)
+(this repo is named `prompt-lab`, so GitHub Pages serves it at that
+subpath rather than the bare `ibalajisivarajan.github.io` root — that's
+expected, not a bug.)
 
 ## What it teaches
 
-You pick any topic — a product idea, business idea, or problem, in 4–25
-words — and the same topic is carried through four progressively more
-capable stages:
+You start by typing a topic (up to 10 words / 60 characters), then that
+exact topic is carried through four progressively more capable stages:
 
-1. **Prompt** — the same idea, phrased vague vs. structured vs. with an
-   example. One input, one raw output, no retry. You feel how far wording
-   alone can take you, and where it stops working.
-2. **Context** — the same prompt, but with a scoring rubric prepended
-   before the model sees the task. Toggle it on/off and re-run to feel
-   the difference between the model guessing your criteria and knowing
-   them.
-3. **Harness** — the app now demands a JSON response, validates it with
-   `JSON.parse`, and auto-retries once on failure, logging every attempt.
-   You stop reading prose and start reading a run log.
-4. **Loop** — score → critique → revise → re-score, repeating until the
-   idea clears a goal score or a max-iteration brake trips. The unit of
-   work becomes the *run*, not the reply.
+1. **Prompt** — Groq writes you three starter prompts for your topic
+   (vague, structured, with an embedded example). Pick one, edit it if you
+   like, and send it. One input, one raw output, no retry. You feel how
+   far wording alone can take you, and where it stops working.
+2. **Context** — on first visiting this stage, Groq generates a short,
+   genuinely useful piece of background (a template, style reference,
+   checklist, or constraints) specific to your topic. Toggle it on/off and
+   re-run the same task prompt to feel the difference between the model
+   guessing and the model knowing.
+3. **Harness** — the app now demands a JSON response (`qualityScore`,
+   `keyStrength`, `improvementSuggestion`, and the actual generated
+   `output` — the real letter/list/report/whatever your topic asked for),
+   validates it with `JSON.parse`, and auto-retries once on failure,
+   logging every attempt. You stop reading prose and start reading a run
+   log.
+4. **Loop** — starting from a rough first-pass draft (also generated from
+   your topic, but fully editable), the app runs score → critique →
+   revise → re-score, repeating until quality clears a goal score (85/100)
+   or a max-iteration brake trips (4 iterations). The unit of work becomes
+   the *run*, not the reply.
 
-The example rubric used in Stages 2–4 is intentionally generic — edit the
-`RUBRIC` constant in `index.html` for your own use case.
+Changing your topic (via the "Change topic" control) throws away
+everything generated so far and starts clean — nothing carries over
+between topics.
 
 ## Getting a Groq API key
 
 1. Sign up at [console.groq.com](https://console.groq.com).
 2. Create a key at [console.groq.com/keys](https://console.groq.com/keys) —
    Groq's free tier is enough to run this app.
+
+The app looks for a key in this order: a deploy-injected `config.js`
+(see below), then a key you've previously pasted in on this device, then
+it asks you once via a plain browser prompt and remembers it on that
+device for next time.
 
 ## Deploying your own copy
 
@@ -47,8 +68,8 @@ The example rubric used in Stages 2–4 is intentionally generic — edit the
    `.github/workflows/deploy.yml` injects your secret into a generated
    `config.js`, then deploys the static site.
 5. Your app will be live at `https://<your-username>.github.io/<repo-name>/`
-   (or `https://<your-username>.github.io/` if the repo is named
-   `<your-username>.github.io`).
+   (or `https://<your-username>.github.io/` only if your repo is named
+   exactly `<your-username>.github.io` — GitHub Pages routes by repo name).
 
 **Never commit a real key to `config.js`.** It's git-ignored on purpose —
 the workflow generates it fresh on every deploy from the `GROQ_API_KEY`
@@ -65,4 +86,6 @@ the folder with any static file server, e.g.:
 python3 -m http.server 8000
 ```
 
-Then open `http://localhost:8000/index.html`.
+Then open `http://localhost:8000/index.html`. If you skip the config.js
+step, the app will just ask you for a key via a browser prompt the first
+time it needs one.
