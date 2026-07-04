@@ -24,8 +24,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Inject Groq key from repo secret
-        run: echo "window.GROQ_KEY = \"${{ secrets.GROQ_API_KEY }}\";" > config.js
+      - name: Build static site with Groq config
+        shell: bash
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${GROQ_API_KEY:-}" ]]; then
+            echo "::error title=Missing GROQ_API_KEY secret::Add a repository Actions secret named GROQ_API_KEY under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+          key_length=${#GROQ_API_KEY}
+          if (( key_length <= 20 )); then
+            echo "::error title=Invalid GROQ_API_KEY secret::GROQ_API_KEY is unexpectedly short (length=${key_length})."
+            exit 1
+          fi
+
+          rm -rf _site
+          mkdir -p _site
+          cp index.html _site/index.html
+          printf 'window.GROQ_KEY = "%s";\n' "$GROQ_API_KEY" > _site/config.js
+
+          test -s _site/config.js
+          grep -q '^window.GROQ_KEY = "' _site/config.js
+          echo "Wrote _site/config.js with window.GROQ_KEY (redacted, length=${key_length})"
+          echo "Files to upload:"
+          find _site -maxdepth 2 -type f | sort
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -33,7 +59,7 @@ jobs:
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
 
       - name: Deploy
         id: deployment

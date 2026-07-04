@@ -31,12 +31,6 @@
   h1 .spark{color:var(--orange);-webkit-text-stroke:1.5px var(--ink)}
   .sub{font-size:13.5px;font-weight:500;margin:0 0 16px}
 
-  /* key bar */
-  .keybar{display:flex;gap:8px;margin-bottom:16px}
-  .keybar input{
-    flex:1;border:3px solid var(--ink);border-radius:12px;padding:11px 12px;
-    font-family:'Space Mono',monospace;font-size:12px;background:var(--paper);outline:none;
-  }
   .btn{
     border:3px solid var(--ink);border-radius:12px;padding:12px 14px;
     font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;
@@ -95,6 +89,10 @@
 
   .take{font-size:12.5px;line-height:1.5;margin-top:12px;padding:10px 12px;
     border:3px dashed var(--ink);border-radius:12px;background:#fff}
+  .topic-summary{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 16px;
+    border-style:solid;box-shadow:var(--shadow-sm)}
+  .topic-summary b{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:3px}
+  .topic-summary .btn{padding:8px 10px;font-size:12px;white-space:nowrap}
 
   .toggle-row{display:flex;align-items:center;justify-content:space-between;
     border:3px solid var(--ink);border-radius:14px;padding:10px 13px;margin-bottom:10px;
@@ -128,14 +126,6 @@
     line-height:1.7;text-align:center}
   .err{color:#B3261E;font-weight:700;font-size:13px;margin-top:10px}
 
-  /* key modal */
-  .modal-bg{position:fixed;inset:0;background:rgba(20,20,20,.55);display:flex;align-items:center;
-    justify-content:center;padding:20px;z-index:50}
-  .modal{background:var(--paper);border:3px solid var(--ink);border-radius:20px;box-shadow:var(--shadow);
-    padding:20px;max-width:420px;width:100%}
-  .modal h2{font-family:'Archivo Black',sans-serif;font-size:20px;margin:0 0 8px;text-transform:uppercase}
-  .modal p{font-size:13.5px;line-height:1.55;margin:0 0 12px}
-  .modal a{color:var(--ink);font-weight:700}
   .hidden{display:none}
 </style>
 </head>
@@ -144,12 +134,7 @@
   <div class="eyebrow">BUSINESS IDEA LOOP · TRAINING SANDBOX</div>
   <h1>Prompt<br>Lab<span class="spark"> ✳</span></h1>
   <p class="sub">Prompt → Context → Harness → Loop. Every button is a real Groq call.</p>
-
-  <div class="keybar">
-    <input id="keyDisplay" type="text" placeholder="Groq API key" readonly onclick="changeKey()" />
-    <button class="btn" onclick="changeKey()">Key</button>
-  </div>
-
+  <div id="topicSummary"></div>
   <div class="tabs" id="tabs"></div>
   <div class="card" id="stageCard"></div>
 
@@ -169,7 +154,7 @@ const LAYERS = {
   4:{name:'Loop',   color:'var(--sky)'},
 };
 const MODEL = 'llama-3.3-70b-versatile';
-const IDEA = 'FocusMirror AI — a $19/mo web app that records your work session via webcam presence detection (no video stored), tracks real focus blocks vs. drift, and emails a nightly focus report with one behavioral fix.';
+const TOPIC_KEY = 'promptlab_topic';
 const RUBRIC = `SCORING RUBRIC (Winners DB, 90 pts max):
 - AI-Operability (0-20): every function runs via AI agents, zero humans at any scale
 - Revenue Path (0-20): credible route to $1M cumulative in months 1-12
@@ -178,52 +163,45 @@ const RUBRIC = `SCORING RUBRIC (Winners DB, 90 pts max):
 - Primal Need (0-15): rooted in sleep, food, mental peace, connection, or entertainment
 - Moat/Distribution (0-10): defensible channel or advantage
 Gate: 38+ to advance. 70+ = FINAL WINNER quality.`;
-const PROMPTS = {
-  vague: 'Evaluate this business idea: ' + IDEA,
-  structured: 'You are a venture analyst. Evaluate this business idea in exactly 3 sections: (1) Strengths, (2) Fatal risks, (3) Verdict in one sentence. Be blunt and specific.\n\nIdea: ' + IDEA,
-  examples: 'You are a venture analyst. Evaluate the idea below.\n\nExample of the verdict style I want: "REJECT — CAC exceeds LTV in every realistic channel; the margin math dies at scale."\n\nGive: (1) Strengths, (2) Fatal risks, (3) A verdict in that exact blunt style.\n\nIdea: ' + IDEA,
-};
+const buildVaguePrompt = topic => `Evaluate this business idea: ${topic}`;
+const buildStructuredPrompt = topic => `You are a venture analyst. Evaluate this business idea in exactly 3 sections: (1) Strengths, (2) Fatal risks, (3) Verdict in one sentence. Be blunt and specific.\n\nIdea: ${topic}`;
+const buildExamplePrompt = topic => `You are a venture analyst. Evaluate the idea below.\n\nExample of the verdict style I want: "REJECT — CAC exceeds LTV in every realistic channel; the margin math dies at scale."\n\nGive: (1) Strengths, (2) Fatal risks, (3) A verdict in that exact blunt style.\n\nIdea: ${topic}`;
+const buildPrompts = topic => ({
+  vague: buildVaguePrompt(topic),
+  structured: buildStructuredPrompt(topic),
+  examples: buildExamplePrompt(topic),
+});
+const buildContextPrompt = topic => `You are the Task 3 evaluator. Score this business idea against the rubric and give a total with per-criterion breakdown, then a one-line verdict.\n\nBackground: Treat the topic as a real early-stage product idea. State key assumptions, likely audience, constraints, and what evidence would change the score.\n\nIdea: ${topic}`;
+const buildHarnessPrompt = topic => `${RUBRIC}\n\nScore this idea against the rubric. Validate the answer by checking for edge cases, missing assumptions, weak revenue logic, and whether the verdict follows from the score. Compare the strongest and weakest criteria before deciding.\n\nIdea: ${topic}`;
+const buildLoopPrompt = topic => `${RUBRIC}\n\nRun one improvement loop for this idea: generate the score, critique the single biggest weakness, identify missing context, improve the prompt/idea, then return a stronger version that can be rerun against the rubric.\n\nIdea: ${topic}`;
 
+function loadTopic(){ try{ return localStorage.getItem(TOPIC_KEY) || ''; }catch(e){ return ''; } }
+function saveTopic(topic){ try{ localStorage.setItem(TOPIC_KEY, topic); }catch(e){} }
+function wordCount(text){ return text.trim().split(/\s+/).filter(Boolean).length; }
+function validTopic(text){ const n=wordCount(text); return n>=4 && n<=25; }
+
+let savedTopic = loadTopic();
+if(savedTopic && !validTopic(savedTopic)) savedTopic = '';
+let initialPrompts = savedTopic ? buildPrompts(savedTopic) : {vague:'', structured:'', examples:''};
 let S = {
+  topic:savedTopic, topicDraft:savedTopic, topicErr:'',
   stage:1, unlocked:1, busy:false,
-  s1:{preset:'vague', prompt:PROMPTS.vague, out:'', err:''},
+  s1:{preset:'vague', prompt:initialPrompts.vague, out:'', err:''},
   s2:{ctxOn:true, context:RUBRIC, out:''},
   s3:{log:[], parsed:null},
-  s4:{idea:'A $9/mo newsletter that curates trending TikTok sounds for small-business owners.',
-      iters:[], stop:'', stopFlag:false},
+  s4:{idea:savedTopic, iters:[], stop:'', stopFlag:false},
 };
 
 /* ================= KEY =================
-   Resolution order:
-   1. window.GROQ_KEY from config.js committed in the repo (feed once, use everywhere)
-   2. localStorage on this device
-   3. Native prompt() fallback                               */
-let memKey = '';
-function configKey(){
-  return (typeof window.GROQ_KEY === 'string' && window.GROQ_KEY.indexOf('gsk_') === 0) ? window.GROQ_KEY : '';
-}
+   The API key is injected by the Pages workflow into config.js as window.GROQ_KEY. */
 function getKey(){
-  const ck = configKey(); if(ck) return ck;
-  try{ const k = localStorage.getItem('promptlab_groq_key'); if(k) return k; }catch(e){}
-  return memKey;
-}
-function setStoredKey(k){ memKey = k; try{ localStorage.setItem('promptlab_groq_key', k); }catch(e){} }
-function changeKey(){
-  if(configKey()){ alert('Key is loaded from config.js in the repo. Edit that file to change it.'); return; }
-  const k = window.prompt('Paste your Groq API key (gsk_...). Stored on this device only:', '');
-  if(k && k.trim()) setStoredKey(k.trim());
-  refreshKeyDisplay();
-}
-function refreshKeyDisplay(){
-  const el = document.getElementById('keyDisplay');
-  const k = getKey();
-  el.value = k ? ('••••••••' + k.slice(-4) + (configKey() ? '  (config.js)' : '  (this device)')) : 'no key — tap Key';
+  return (typeof window.GROQ_KEY === 'string' && window.GROQ_KEY.indexOf('gsk_') === 0) ? window.GROQ_KEY : '';
 }
 
 /* ================= GROQ ================= */
 async function callGroq(userContent, system){
   const key = getKey();
-  if(!key){ changeKey(); throw new Error('NO_KEY'); }
+  if(!key){ throw new Error('CONFIG_KEY_MISSING'); }
   const messages = [];
   if(system) messages.push({role:'system', content:system});
   messages.push({role:'user', content:userContent});
@@ -244,15 +222,22 @@ function esc(t){ const d=document.createElement('div'); d.textContent=t; return 
 
 /* ================= RENDER ================= */
 function render(){
+  renderTopicSummary();
   renderTabs();
   const el = document.getElementById('stageCard');
+  if(!S.topic){ el.innerHTML = viewTopic(); return; }
   if(S.stage===1) el.innerHTML = viewS1();
   if(S.stage===2) el.innerHTML = viewS2();
   if(S.stage===3) el.innerHTML = viewS3();
   if(S.stage===4) el.innerHTML = viewS4();
 }
+function renderTopicSummary(){
+  const el = document.getElementById('topicSummary');
+  el.innerHTML = S.topic ? `<div class="take topic-summary"><div><b>Topic</b>${esc(S.topic)}</div><button class="btn" onclick="changeTopic()">Change topic</button></div>` : '';
+}
 function renderTabs(){
   const t = document.getElementById('tabs');
+  if(!S.topic){ t.innerHTML=''; return; }
   t.innerHTML = [1,2,3,4].map(i=>{
     const L=LAYERS[i], un=i<=S.unlocked, act=i===S.stage;
     return `<div class="tab ${act?'active':''} ${un?'':'locked'}"
@@ -269,6 +254,31 @@ function teach(stage, html){
     <span class="tag">What this layer adds</span>${html}</div>`;
 }
 function busyRow(txt){ return S.busy?`<div class="busy"><span class="spin"></span>${txt}</div>`:''; }
+function currentPrompts(){ return buildPrompts(S.topic); }
+function setTopic(){
+  const topic = S.topicDraft.trim().replace(/\s+/g,' ');
+  if(!topic){ S.topicErr='Enter a topic first.'; render(); return; }
+  if(!validTopic(topic)){ S.topicErr='Enter a topic in 4 to 25 words.'; render(); return; }
+  S.topic=topic; S.topicDraft=topic; S.topicErr=''; saveTopic(topic);
+  resetForTopic(); render();
+}
+function changeTopic(){ S.topic=''; S.topicErr=''; S.topicDraft=loadTopic(); render(); }
+function resetForTopic(){
+  const prompts=currentPrompts();
+  S.stage=1; S.unlocked=1; S.busy=false;
+  S.s1={preset:'vague', prompt:prompts.vague, out:'', err:''};
+  S.s2={ctxOn:true, context:RUBRIC, out:''};
+  S.s3={log:[], parsed:null};
+  S.s4={idea:S.topic, iters:[], stop:'', stopFlag:false};
+}
+function viewTopic(){
+  return `
+  <div class="stage-title" style="background:${LAYERS[1].color}">Choose topic</div>
+  ${teach(1,'Pick the idea, product, or problem this sandbox will use. Prompt Lab will keep teaching the same Prompt → Context → Harness → Loop flow, but every layer will use your topic.')}
+  <textarea id="topicInput" rows="4" placeholder="AI app that turns Google Photos albums into memory movies" oninput="S.topicDraft=this.value">${esc(S.topicDraft)}</textarea>
+  <button class="btn full" style="background:${LAYERS[1].color}" onclick="setTopic()">Start Prompt Lab</button>
+  ${S.topicErr?`<div class="err">${esc(S.topicErr)}</div>`:''}`;
+}
 
 /* ================= STAGE 1 ================= */
 function viewS1(){
@@ -288,16 +298,15 @@ function viewS1(){
   ${p.out?`<div class="out"><div class="lbl">Raw response</div><div class="body">${esc(p.out)}</div></div>
   <div class="take"><b>Takeaway:</b> better wording → better output, but the model still guesses your criteria. It doesn't know your rubric exists. That's a <b>context</b> problem — Stage 2 unlocked.</div>`:''}`;
 }
-function setPreset(k){ S.s1.preset=k; S.s1.prompt=PROMPTS[k]; render(); }
+function setPreset(k){ S.s1.preset=k; S.s1.prompt=currentPrompts()[k]; render(); }
 async function runS1(){
   S.busy=true; S.s1.out=''; S.s1.err=''; render();
   try{ S.s1.out = await callGroq(S.s1.prompt); complete(1); }
-  catch(e){ S.s1.err = e.message==='NO_KEY'?'Add your Groq key first.':'Call failed ('+e.message+'). Run again — Stage 1 has no retry. That is the point.'; }
+  catch(e){ S.s1.err = e.message==='CONFIG_KEY_MISSING'?'API key is unavailable. Check the repo secret and generated config.js.':'Call failed ('+e.message+'). Run again — Stage 1 has no retry. That is the point.'; }
   S.busy=false; render();
 }
 
 /* ================= STAGE 2 ================= */
-const S2_PROMPT = 'You are the Task 3 evaluator. Score this business idea against the rubric and give a total with per-criterion breakdown, then a one-line verdict.\n\nIdea: ' + IDEA;
 function viewS2(){
   const p=S.s2;
   return `
@@ -308,7 +317,7 @@ function viewS2(){
   </div>
   ${p.ctxOn?`<textarea rows="7" oninput="S.s2.context=this.value">${esc(p.context)}</textarea>`:''}
   <div class="out" style="margin:0 0 12px;box-shadow:none"><div class="lbl">Fixed prompt</div>
-    <div class="body" style="font-family:'Space Mono',monospace;font-size:12px">${esc(S2_PROMPT)}</div></div>
+    <div class="body" style="font-family:'Space Mono',monospace;font-size:12px">${esc(buildContextPrompt(S.topic))}</div></div>
   <button class="btn full" style="background:${LAYERS[2].color}" ${S.busy?'disabled':''} onclick="runS2()">
     ${S.busy?'Calling model…':(p.ctxOn?'Run WITH context':'Run WITHOUT context')}</button>
   ${busyRow('context + prompt → model')}
@@ -318,9 +327,10 @@ function viewS2(){
 async function runS2(){
   S.busy=true; S.s2.out=''; render();
   try{
-    const full = S.s2.ctxOn ? S.s2.context+'\n\n---\n\n'+S2_PROMPT : S2_PROMPT;
+    const prompt = buildContextPrompt(S.topic);
+    const full = S.s2.ctxOn ? S.s2.context+'\n\n---\n\n'+prompt : prompt;
     S.s2.out = await callGroq(full); complete(2);
-  }catch(e){ S.s2.out = e.message==='NO_KEY'?'Add your Groq key first.':'Call failed — try again. ('+e.message+')'; }
+  }catch(e){ S.s2.out = e.message==='CONFIG_KEY_MISSING'?'API key is unavailable. Check the repo secret and generated config.js.':'Call failed — try again. ('+e.message+')'; }
   S.busy=false; render();
 }
 
@@ -331,6 +341,8 @@ function viewS3(){
   return `
   <div class="stage-title" style="background:${LAYERS[3].color}">Stage 3 — Harness</div>
   ${teach(3,'The app now <b>demands JSON, validates with JSON.parse(), and auto-retries once on failure</b> — logging every attempt with latency. You stop reading outputs and start reading a run log. The system catches failure, not you.')}
+  <div class="out" style="margin:0 0 12px;box-shadow:none"><div class="lbl">Harness prompt</div>
+    <div class="body" style="font-family:'Space Mono',monospace;font-size:12px">${esc(buildHarnessPrompt(S.topic))}</div></div>
   <button class="btn full" style="background:${LAYERS[3].color}" ${S.busy?'disabled':''} onclick="runS3()">
     ${S.busy?'Harness running…':'Run harnessed call'}</button>
   ${busyRow('call → validate → retry if needed')}
@@ -352,7 +364,7 @@ async function runS3(){
   for(let a=1;a<=MAX;a++){
     const t0=Date.now();
     try{
-      const raw = await callGroq(RUBRIC+'\n\nScore this idea against the rubric.\n\nIdea: '+IDEA, JSON_SYS);
+      const raw = await callGroq(buildHarnessPrompt(S.topic), JSON_SYS);
       const ms=Date.now()-t0;
       try{
         const obj = JSON.parse(stripFences(raw));
@@ -363,7 +375,7 @@ async function runS3(){
         render();
       }
     }catch(e){
-      if(e.message==='NO_KEY'){ S.busy=false; render(); return; }
+      if(e.message==='CONFIG_KEY_MISSING'){ S.s3.log.push({attempt:a,status:'FAIL',detail:'config.js key missing'}); S.busy=false; render(); return; }
       S.s3.log.push({attempt:a,status:'FAIL',detail:'network/API error · '+(a<MAX?'auto-retrying':'brake tripped')});
       render();
     }
@@ -379,7 +391,7 @@ function viewS4(){
   return `
   <div class="stage-title" style="background:${LAYERS[4].color}">Stage 4 — Loop</div>
   ${teach(4,`Goal + stop rule: <b>revise until score ≥ ${GOAL}, max ${MAX_ITERS} iterations</b>. Each cycle: score → critique → revise → re-score, feeding results back as new context. The run ends when the job is done or the brake trips — never "when the model stops talking."`)}
-  <textarea rows="3" oninput="S.s4.idea=this.value">${esc(p.idea)}</textarea>
+  <textarea rows="3" oninput="S.s4.idea=this.value">${esc(p.idea || S.topic)}</textarea>
   <div style="display:flex;gap:8px">
     <button class="btn full" style="background:${LAYERS[4].color};flex:3" ${S.busy?'disabled':''} onclick="runS4()">
       ${S.busy?'Loop running…':'Run loop'}</button>
@@ -397,11 +409,11 @@ function viewS4(){
 }
 async function runS4(){
   S.busy=true; S.s4.iters=[]; S.s4.stop=''; S.s4.stopFlag=false; render();
-  let current=S.s4.idea;
+  let current=S.s4.idea || S.topic;
   for(let i=1;i<=MAX_ITERS;i++){
     if(S.s4.stopFlag){ S.s4.stop='STOPPED — manual brake'; break; }
     try{
-      const raw = await callGroq(RUBRIC+'\n\nScore this idea, name its single biggest weakness, and rewrite it stronger.\n\nIdea: '+current, LOOP_SYS);
+      const raw = await callGroq(buildLoopPrompt(current), LOOP_SYS);
       const obj = JSON.parse(stripFences(raw));
       S.s4.iters.push({n:i,score:obj.score,critique:obj.critique,revisedIdea:obj.revisedIdea});
       render();
@@ -411,7 +423,7 @@ async function runS4(){
       }
       current=obj.revisedIdea;
     }catch(e){
-      if(e.message==='NO_KEY'){ S.busy=false; render(); return; }
+      if(e.message==='CONFIG_KEY_MISSING'){ S.s4.stop='CONFIG ERROR — config.js did not provide the repo API key'; S.busy=false; render(); return; }
       S.s4.iters.push({n:i,score:null,critique:'iteration failed (parse/network) — loop continues',revisedIdea:current});
       render();
     }
@@ -421,7 +433,6 @@ async function runS4(){
 }
 
 /* ================= INIT ================= */
-refreshKeyDisplay();
 render();
 </script>
 </body>
